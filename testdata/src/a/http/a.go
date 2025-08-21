@@ -34,7 +34,7 @@ func send(ireq *http.Request) (resp *http.Response, didTimeout func() bool, err 
 
 	// forkReq forks req into a shallow clone of ireq the first
 	// time it's called.
-	forkReq := func() {
+	forkReq := func() { // something here
 		if ireq == req {
 			req = new(http.Request)
 			*req = *ireq // shallow clone
@@ -47,6 +47,7 @@ func send(ireq *http.Request) (resp *http.Response, didTimeout func() bool, err 
 	if req.Header == nil {
 		forkReq()
 		req.Header = make(http.Header)
+		// after this point, some insight
 	}
 
 	if tlsErr, ok := err.(tls.RecordHeaderError); ok {
@@ -78,4 +79,5 @@ func send(ireq *http.Request) (resp *http.Response, didTimeout func() bool, err 
 		}
 		resp.Body = io.NopCloser(strings.NewReader(""))
 	}
+	// Verify that this works when there will be no final cursor
 }

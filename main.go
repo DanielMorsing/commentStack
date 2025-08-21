@@ -27,9 +27,6 @@ func main() {
 	}
 	inspect := inspector.New(files)
 	root := inspect.Root()
-	// TODO(dmo): if we get "maxevent" from the inspector, this could be a slice
-	route := make(map[int32]CommentRoute)
-	_ = route
 
 	for fileCur := range root.Preorder((*ast.File)(nil)) {
 		file := fileCur.Node().(*ast.File)
@@ -39,6 +36,12 @@ func main() {
 		ranges := make([]cursorRange, len(file.Comments))
 		var idx int
 		prev := fileCur
+		// roughly, each comment will be bounded by 2 cursors.
+		// One just before the comment and one just after.
+		//
+		// Note that because our "after" is any construction
+		// that introduces a token after the comment, the after cursor
+		// can be a parent in the AST
 		fmt.Printf("looking for %s\n", line(file.Comments[idx]))
 		fileCur.Inspect(nil, func(c inspector.Cursor) bool {
 			// should probably filter with the cursor, but
@@ -57,7 +60,14 @@ func main() {
 				prev = c
 				return true
 			}
-			if cmt.End() < c.Node().Pos() {
+			if cmt.End() < n.Pos() {
+				// we have 2 bounding cursors, but it might be down
+				// a different subtree of the AST. Check the parent of the
+				// previous cursor, to see if it "contains" the comment
+				parent := prev.Parent().Node()
+				if cmt.End() < parent.End() && parent.End() < n.Pos() {
+					c = prev.Parent()
+				}
 				ranges[idx] = cursorRange{prev, c}
 				idx++
 				prev = c
@@ -68,8 +78,32 @@ func main() {
 				}
 				return true
 			}
+			prev = c
 			return false
 		})
+		// we ran off the edge, walk up the AST of the previous cursor
+		// until we reach the first point that doesn't contain
+		// the comment. It and it's parent are the bounding cursors
+		if idx == len(file.Comments)-1 {
+
+			cmt := file.Comments[idx]
+			var c inspector.Cursor
+			for c = range prev.Enclosing() {
+				n := c.Node()
+				if n.End() < cmt.Pos() {
+					prev = c
+				}
+			}
+			ranges[idx] = cursorRange{prev, prev.Parent()}
+		}
+		fmt.Println()
+		for i, r := range ranges {
+			fmt.Println(line(file.Comments[i]))
+			prev := r.prev.Node()
+			fmt.Printf("\tprev %T %s\n", prev, line(prev))
+			next := r.next.Node()
+			fmt.Printf("\tnext %T %s\n", next, line(next))
+		}
 	}
 }
 
@@ -110,7 +144,7 @@ func lineRange(fset *token.FileSet, pos token.Pos) (begin, end token.Pos) {
 func line(n ast.Node) string {
 	begin := fset.Position(n.Pos())
 	end := fset.Position(n.End())
-	return fmt.Sprintf("./%s:%v:%v;%v:%v", begin.Filename, begin.Line, begin.Column, end.Line, end.Column)
+	return fmt.Sprintf("./%s:%v:%v:%v:%v", begin.Filename, begin.Line, begin.Column, end.Line, end.Column)
 }
 
 func sortComments(comms []*ast.CommentGroup) {
