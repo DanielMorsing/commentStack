@@ -27,17 +27,100 @@ func main() {
 	}
 	inspect := inspector.New(files)
 	root := inspect.Root()
+	// TODO(dmo): if we get "maxevent" from the inspector, this could be a slice
+	route := make(map[int32]CommentRoute)
 	for fileCur := range root.Preorder((*ast.File)(nil)) {
 		file := fileCur.Node().(*ast.File)
 
 		fmt.Println(fset.Position(file.Name.Pos()).Filename)
 		sortComments(file.Comments)
-		for i, c := range file.Comments {
-			if i != 0 && file.Comments[i-1].Pos() > c.Pos() {
-				panic("unordered comments")
+		// File is special, since there is no previous ast node to anchor to
+		var idx int
+		var fileroute CommentRoute
+		if len(file.Comments) > 0 {
+			up, left, right := GetBounds(fset, nil, file, nil)
+			cmt := file.Comments[idx]
+			for {
+				switch {
+				case cmt.Pos() < up:
+					fileroute.up = append(fileroute.up, cmt)
+				case cmt.Pos() < left:
+					fileroute.left = append(fileroute.left, cmt)
+				case cmt.Pos() < right:
+					fileroute.right = append(fileroute.right, cmt)
+				}
+				idx++
+				if idx >= len(file.Comments) || cmt.Pos() >= right {
+					break
+				}
+				cmt = file.Comments[idx]
 			}
 		}
+		route[fileCur.Index()] = fileroute
+		fmt.Println(fileroute.up, fileroute.left, fileroute.right)
+
+		for _, cmt := range file.Comments[idx-1:] {
+			// Could probably do something clever with Inspect, but FindByPos is
+			// fast and we can easily walk to the important nodes
+			cur, ok := fileCur.FindByPos(cmt.Pos(), cmt.Pos())
+			if !ok {
+				panic("huh?")
+			}
+			var next inspector.Cursor
+			for next = range cur.Preorder() {
+				if next.Node().Pos() > cmt.End() {
+					break
+				}
+			}
+			prev, ok := next.PrevSibling()
+			if !ok {
+				prev = next.Parent()
+			}
+			// comment between the end of the previous
+			if cmt.Pos() > prev.Node().End() {
+
+			}
+
+			fmt.Printf("%s\n%s\n", fset.Position(cmt.Pos()), fset.Position(cmt.End()))
+			fmt.Printf("\t CUR %s %T\n", fset.Position(cur.Node().Pos()), cur.Node())
+			fmt.Printf("\t PREV %s %T\n", fset.Position(prev.Node().Pos()), prev.Node())
+			fmt.Printf("\t NEXT %s %T\n", fset.Position(next.Node().Pos()), next.Node())
+		}
 	}
+}
+
+func GetBounds(fset *token.FileSet, prev ast.Node, node ast.Node, next ast.Node) (up, left, right token.Pos) {
+	if f, ok := node.(*ast.File); ok {
+		up, right = lineRange(fset, f.Package)
+		left = f.Package
+		return up, left, right
+	}
+	panic("unreachable")
+}
+
+type CommentRoute struct {
+	up    []*ast.CommentGroup
+	down  []*ast.CommentGroup
+	left  []*ast.CommentGroup
+	right []*ast.CommentGroup
+}
+
+func lineRange(fset *token.FileSet, pos token.Pos) (begin, end token.Pos) {
+	tokfile := fset.File(pos)
+	line := tokfile.Position(pos).Line
+	begin = tokfile.LineStart(line)
+	if tokfile.LineCount() < line+1 {
+		end = token.Pos(tokfile.Size())
+	} else {
+		end = tokfile.LineStart(line + 1)
+	}
+	return begin, end
+
+}
+
+func line(pos token.Pos) string {
+	position := fset.Position(pos)
+	return fmt.Sprintf("./%s:%v", position.Filename, position.Line)
 }
 
 func sortComments(comms []*ast.CommentGroup) {
@@ -87,7 +170,6 @@ func parseFiles(dir string, filenames []string) ([]*ast.File, error) {
 
 // parse may be called concurrently
 func parse(filename string, src any) (*ast.File, error) {
-	fmt.Println(filename)
 	file, err := parser.ParseFile(fset, filename, src, parser.ParseComments|parser.SkipObjectResolution) // ok to access fset concurrently
 	//ast.Print(fset, file)
 	return file, err
