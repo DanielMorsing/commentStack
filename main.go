@@ -29,64 +29,53 @@ func main() {
 	root := inspect.Root()
 	// TODO(dmo): if we get "maxevent" from the inspector, this could be a slice
 	route := make(map[int32]CommentRoute)
+	_ = route
+
 	for fileCur := range root.Preorder((*ast.File)(nil)) {
 		file := fileCur.Node().(*ast.File)
 
 		fmt.Println(fset.Position(file.Name.Pos()).Filename)
 		sortComments(file.Comments)
-		// File is special, since there is no previous ast node to anchor to
+		ranges := make([]cursorRange, len(file.Comments))
 		var idx int
-		var fileroute CommentRoute
-		if len(file.Comments) > 0 {
-			up, left, right := GetBounds(fset, nil, file, nil)
+		prev := fileCur
+		fmt.Printf("looking for %s\n", line(file.Comments[idx]))
+		fileCur.Inspect(nil, func(c inspector.Cursor) bool {
+			// should probably filter with the cursor, but
+			// these are leaf nodes, so no biggie
+			if _, ok := c.Node().(*ast.CommentGroup); ok {
+				return false
+			}
+			if idx == len(file.Comments) {
+				return false
+			}
+			fmt.Printf("\t%T\t%s\n", c.Node(), line(c.Node()))
 			cmt := file.Comments[idx]
-			for {
-				switch {
-				case cmt.Pos() < up:
-					fileroute.up = append(fileroute.up, cmt)
-				case cmt.Pos() < left:
-					fileroute.left = append(fileroute.left, cmt)
-				case cmt.Pos() < right:
-					fileroute.right = append(fileroute.right, cmt)
-				}
+			n := c.Node()
+			// comment within this AST node, descend
+			if n.Pos() < cmt.Pos() && cmt.End() < n.End() {
+				prev = c
+				return true
+			}
+			if cmt.End() < c.Node().Pos() {
+				ranges[idx] = cursorRange{prev, c}
 				idx++
-				if idx >= len(file.Comments) || cmt.Pos() >= right {
-					break
+				prev = c
+				if idx == len(file.Comments) {
+					return false
+				} else {
+					fmt.Printf("looking for %s\n", line(file.Comments[idx]))
 				}
-				cmt = file.Comments[idx]
+				return true
 			}
-		}
-		route[fileCur.Index()] = fileroute
-		fmt.Println(fileroute.up, fileroute.left, fileroute.right)
-
-		for _, cmt := range file.Comments[idx-1:] {
-			// Could probably do something clever with Inspect, but FindByPos is
-			// fast and we can easily walk to the important nodes
-			cur, ok := fileCur.FindByPos(cmt.Pos(), cmt.Pos())
-			if !ok {
-				panic("huh?")
-			}
-			var next inspector.Cursor
-			for next = range cur.Preorder() {
-				if next.Node().Pos() > cmt.End() {
-					break
-				}
-			}
-			prev, ok := next.PrevSibling()
-			if !ok {
-				prev = next.Parent()
-			}
-			// comment between the end of the previous
-			if cmt.Pos() > prev.Node().End() {
-
-			}
-
-			fmt.Printf("%s\n%s\n", fset.Position(cmt.Pos()), fset.Position(cmt.End()))
-			fmt.Printf("\t CUR %s %T\n", fset.Position(cur.Node().Pos()), cur.Node())
-			fmt.Printf("\t PREV %s %T\n", fset.Position(prev.Node().Pos()), prev.Node())
-			fmt.Printf("\t NEXT %s %T\n", fset.Position(next.Node().Pos()), next.Node())
-		}
+			return false
+		})
 	}
+}
+
+type cursorRange struct {
+	prev inspector.Cursor
+	next inspector.Cursor
 }
 
 func GetBounds(fset *token.FileSet, prev ast.Node, node ast.Node, next ast.Node) (up, left, right token.Pos) {
@@ -118,9 +107,10 @@ func lineRange(fset *token.FileSet, pos token.Pos) (begin, end token.Pos) {
 
 }
 
-func line(pos token.Pos) string {
-	position := fset.Position(pos)
-	return fmt.Sprintf("./%s:%v", position.Filename, position.Line)
+func line(n ast.Node) string {
+	begin := fset.Position(n.Pos())
+	end := fset.Position(n.End())
+	return fmt.Sprintf("./%s:%v:%v;%v:%v", begin.Filename, begin.Line, begin.Column, end.Line, end.Column)
 }
 
 func sortComments(comms []*ast.CommentGroup) {
