@@ -35,7 +35,7 @@ func main() {
 
 		fmt.Println(fset.Position(file.Name.Pos()).Filename)
 		sortComments(file.Comments)
-		ranges := make([]commentRange, len(file.Comments))
+		ranges := make([]*commentRange, len(file.Comments))
 		// Each comment will be bounded by 2 cursors.
 		// One cursor for the node that last produced a token before the comment
 		// and one cursor for the node that will introduce a token after the comment
@@ -43,7 +43,6 @@ func main() {
 			outer, _ := fileCur.FindByPos(cmt.Pos(), cmt.Pos())
 			prev := outer
 			next := outer
-			ast.Print(fset, outer.Node())
 			for cur := range outer.Children() {
 				if cur.Node().End() < cmt.Pos() {
 					prev = cur
@@ -52,7 +51,7 @@ func main() {
 				next = cur
 				break
 			}
-			r := commentRange{
+			r := &commentRange{
 				comment: cmt,
 				prev:    prev,
 				next:    next,
@@ -60,11 +59,36 @@ func main() {
 			r.adjust()
 			ranges[i] = r
 		}
+		anchors := make(map[int32]*commentRange)
 		for _, r := range ranges {
-			fmt.Println(r.String())
+			anchor := r.prev
+			if r.anchor == AnchorRight {
+				anchor = r.next
+			}
+			anchors[anchor.Index()] = r
+		}
+		// toy example of finding go:fix inline directives
+		for declCur := range fileCur.Preorder((*ast.FuncDecl)(nil)) {
+			idx := declCur.Index()
+			cmt, ok := anchors[idx]
+			if !ok {
+				continue
+			}
+			if cmt.comment.List[0].Text != "//go:fix inline" {
+				continue
+			}
+			retCur := slices.Collect(declCur.Preorder((*ast.ReturnStmt)(nil)))
+			if len(retCur) != 1 {
+				panic("multiple returns in inline")
+			}
+			ret := retCur[0].Node().(*ast.ReturnStmt)
+			if len(ret.Results) != 1 {
+				panic("multiple results to return")
+			}
+			c := ret.Results[0].(*ast.CallExpr)
+			ast.Print(fset, c.Fun)
 		}
 	}
-
 }
 
 type Anchor int

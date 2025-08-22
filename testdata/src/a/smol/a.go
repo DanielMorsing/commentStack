@@ -1,16 +1,18 @@
 package a
 
-func bar() int
+func bar() bool
 
 //go:fix inline
-func foobar() int {
+func foobar() bool {
 	return bar()
 }
+
+var a, b bool
 
 func x() {
 	switch {
 	case foobar(), // for fluuxing
-		a + b:
+		a || b:
 		// because Something
 	}
 }
