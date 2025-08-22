@@ -42,4 +42,8 @@ func /* dumdum */ (rev *recv) send(ireq *http.Request) (resp *http.Response, did
 		field: /* huh */ something,
 	}
 
+	foobar.v( /* jfkl */
+	)
+	foobar.v() // fjkls
+	foobar.v /*fjkl*/ ()
 }

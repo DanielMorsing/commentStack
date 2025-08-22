@@ -23,7 +23,7 @@ var (
 )
 
 func main() {
-	files, err := parseDir("./testdata/src/a/http")
+	files, err := parseDir("./testdata/src/a/smol")
 	if err != nil {
 		log.Fatalf("cannot parse: %s", err)
 	}
@@ -43,6 +43,7 @@ func main() {
 			outer, _ := fileCur.FindByPos(cmt.Pos(), cmt.Pos())
 			prev := outer
 			next := outer
+			ast.Print(fset, outer.Node())
 			for cur := range outer.Children() {
 				if cur.Node().End() < cmt.Pos() {
 					prev = cur
@@ -113,12 +114,32 @@ func (r *commentRange) adjust() {
 		r.anchor = AnchorRight
 	}
 
-	// Not siblings, this is always unambiguous
+	// we ran off the edge of the node without finding any
+	// sub-nodes. This happens when the comment occurs
+	// inside empty postfix constructions (like function calls)
+	call, ok := right.Node().(*ast.CallExpr)
+	if left.Parent() == right && ok {
+		// we have a comment inside the call parens
+		// we represent this as 2 cursors to the call
+		// expression with the anchoring based whether
+		// the comment is on the same line as the opening
+		// or closing paren
+		lparen := call.Lparen
+		if lparen < cmt.Pos() {
+			r.prev = right
+			r.next = right
+			line := fset.Position(lparen).Line
+			if line == cLine {
+				r.anchor = AnchorLeft
+			} else {
+				r.anchor = AnchorRight
+			}
+		}
+	}
 	if parent != right.Parent() {
 		return
 	}
 
-	// siblings siblings siblings siblings
 	lp, _ := left.ParentEdge()
 	rp, _ := right.ParentEdge()
 
