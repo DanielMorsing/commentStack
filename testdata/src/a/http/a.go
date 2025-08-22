@@ -9,11 +9,19 @@ func alwaysFalse() {
 	return false
 }
 
+type s [] /*dum*/ int
+
 // Yes
-func /* dumdum */ send(ireq *http.Request) (resp *http.Response, didTimeout func() bool, err error) {
+func /* dumdum */ (rev *recv) send(ireq *http.Request) (resp *http.Response, didTimeout func() bool, err error) {
 	// comment before a statement
 	b := c
 
+	switch {
+	case a, /* something */
+		b:
+	}
+
+	// hello
 	if rt == nil /* comment inside */ {
 		// comment in if
 		return nil, alwaysFalse, errors.New("http: no Client.Transport or DefaultTransport")

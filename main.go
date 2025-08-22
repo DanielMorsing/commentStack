@@ -10,6 +10,7 @@ import (
 	"log"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,10 +40,7 @@ func main() {
 		// One cursor for the node that last produced a token before the comment
 		// and one cursor for the node that will introduce a token after the comment
 		for i, cmt := range file.Comments {
-			fmt.Printf("looking for %s\n", line(cmt))
 			outer, _ := fileCur.FindByPos(cmt.Pos(), cmt.Pos())
-			n := outer.Node()
-			fmt.Printf("starting at %T %s\n", n, line(n))
 			prev := outer
 			next := outer
 			for cur := range outer.Children() {
@@ -53,61 +51,140 @@ func main() {
 				next = cur
 				break
 			}
-			r := commentRange{cmt, prev, next}
+			r := commentRange{
+				comment: cmt,
+				prev:    prev,
+				next:    next,
+			}
 			r.adjust()
 			ranges[i] = r
 		}
-		for i, r := range ranges {
-			fmt.Println(line(file.Comments[i]))
-			prev := r.prev.Node()
-			fmt.Printf("\tprev %T %s\n", prev, line(prev))
-			next := r.next.Node()
-			fmt.Printf("\tnext %T %s\n", next, line(next))
+		for _, r := range ranges {
+			fmt.Println(r.String())
 		}
 	}
 }
+
+type Anchor int
+
+const (
+	AnchorNone Anchor = iota
+	AnchorLeft
+	AnchorRight
+)
 
 type commentRange struct {
 	comment *ast.CommentGroup
 	prev    inspector.Cursor
 	next    inspector.Cursor
+	anchor  Anchor
+}
+
+func (r *commentRange) String() string {
+	var b strings.Builder
+	fmt.Fprintln(&b, line(r.comment))
+	prev := r.prev.Node()
+	anchor := ""
+	if r.anchor == AnchorLeft {
+		anchor = " (ANCHOR)"
+	}
+	fmt.Fprintf(&b, "\tprev %T %s%s\n", prev, line(prev), anchor)
+
+	anchor = ""
+	if r.anchor == AnchorRight {
+		anchor = " (ANCHOR)"
+	}
+	next := r.next.Node()
+	fmt.Fprintf(&b, "\tnext %T %s%s\n", next, line(next), anchor)
+	return b.String()
 }
 
 func (r *commentRange) adjust() {
 	left := r.prev
 	right := r.next
+	cmt := r.comment
 	parent := left.Parent()
-	// the boundary between a parent and a child
-	// is always unambiguous
-	if right.Parent() != parent {
+
+	cLine := fset.Position(cmt.Pos()).Line
+	lLine := fset.Position(left.Node().Pos()).Line
+	if cLine == lLine {
+		r.anchor = AnchorLeft
+	} else {
+		r.anchor = AnchorRight
+	}
+
+	// Not siblings, this is always unambiguous
+	if parent != right.Parent() {
 		return
 	}
-	lk, _ := left.ParentEdge()
-	rk, _ := right.ParentEdge()
-	if lk == edge.KeyValueExpr_Key && rk == edge.KeyValueExpr_Value {
+
+	// siblings siblings siblings siblings
+	lp, _ := left.ParentEdge()
+	rp, _ := right.ParentEdge()
+
+	// binary constructions with tokens between them
+	tok := token.NoPos
+	switch lp {
+	case edge.AssignStmt_Lhs:
+		astmt := parent.Node().(*ast.AssignStmt)
+		tok = astmt.TokPos
+	case edge.KeyValueExpr_Key:
 		kv := parent.Node().(*ast.KeyValueExpr)
-		if r.comment.Pos() < kv.Colon {
+		tok = kv.Colon
+	case edge.BinaryExpr_X:
+		be := parent.Node().(*ast.BinaryExpr)
+		tok = be.OpPos
+	default:
+	}
+	if tok != token.NoPos {
+		if r.comment.Pos() < tok {
 			r.next = parent
 		} else {
 			r.prev = parent
 		}
+		return
 	}
+	// Keyword "func" between doc and the rest of the decl
+	if lp == edge.FuncDecl_Doc {
+		r.prev = parent
+		return
+	}
+
+	if tokenless[lp] {
+		return
+	}
+	// The AST doesn't currently let us inspect certain grammars
+	// containing lists. For example CaseClause:
+	//
+	// case a, /* comment */ b:
+	//
+	// There is no way from looking at the ranges embedded
+	// in the AST whether the comma occurs before or after the
+	// comment. The good news here is that it has been this way
+	// forever and gofmt arbitrarily, but consistently picks for us.
+	// if we're on the same line, the comment will be moved before the
+	// comma and if we're on different lines, the comment goes after.
+	switch lp {
+	case edge.CaseClause_List, edge.FieldList_List:
+
+		if r.anchor == AnchorRight {
+			// the comma here will always be before the
+			// comment
+			r.prev = parent
+		} else {
+			// gofmt code will always move the comment before the
+			// comma
+			r.next = parent
+		}
+		return
+	}
+	panic(fmt.Sprintf("unhandled adjust %T[%s,%s]", parent.Node(), lp, rp))
 }
 
-func GetBounds(fset *token.FileSet, prev ast.Node, node ast.Node, next ast.Node) (up, left, right token.Pos) {
-	if f, ok := node.(*ast.File); ok {
-		up, right = lineRange(fset, f.Package)
-		left = f.Package
-		return up, left, right
-	}
-	panic("unreachable")
-}
-
-type CommentRoute struct {
-	up    []*ast.CommentGroup
-	down  []*ast.CommentGroup
-	left  []*ast.CommentGroup
-	right []*ast.CommentGroup
+var tokenless = map[edge.Kind]bool{
+	edge.File_Decls:     true,
+	edge.IfStmt_Cond:    true,
+	edge.BlockStmt_List: true,
 }
 
 func lineRange(fset *token.FileSet, pos token.Pos) (begin, end token.Pos) {
