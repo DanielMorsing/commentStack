@@ -1,0 +1,8 @@
+commentStack is an experiment that tries to represent comments
+as state transitions in the go parser, via Cursors. It is adapted from gotype
+
+Right now, all it does is parse the example files and spit out
+which pairs of cursors comments lie between and which construction
+"anchors them"
+
+I'm working on an example that shows modification
