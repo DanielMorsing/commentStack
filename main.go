@@ -153,29 +153,24 @@ func (r *commentRange) adjust() {
 	if tokenless[lp] {
 		return
 	}
-	// The AST doesn't currently let us inspect certain grammars
-	// containing lists. For example CaseClause:
+	// The AST doesn't currently let us inspect certain grammars.
+	// For example CaseClause:
 	//
 	// case a, /* comment */ b:
 	//
 	// There is no way from looking at the ranges embedded
 	// in the AST whether the comma occurs before or after the
-	// comment. The good news here is that it has been this way
-	// forever and gofmt arbitrarily, but consistently picks for us.
-	// if we're on the same line, the comment will be moved before the
-	// comma and if we're on different lines, the comment goes after.
+	// comment. In this case, we keep the siblings as the bounding
+	// cursors and rely on anchoring to disambiguate which cursor
+	// the comment belongs to.
+	//
+	// Luckily, this is what gofmt has done since forever.
+	// gofmt'ed code will always have the comma after the comment
+	// if the 2 edges occur on the same line
 	switch lp {
 	case edge.CaseClause_List, edge.FieldList_List:
-
-		if r.anchor == AnchorRight {
-			// the comma here will always be before the
-			// comment
-			r.prev = parent
-		} else {
-			// gofmt code will always move the comment before the
-			// comma
-			r.next = parent
-		}
+		return
+	case edge.SelectorExpr_X:
 		return
 	}
 	panic(fmt.Sprintf("unhandled adjust %T[%s,%s]", parent.Node(), lp, rp))

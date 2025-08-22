@@ -20,6 +20,7 @@ func /* dumdum */ (rev *recv) send(ireq *http.Request) (resp *http.Response, did
 	case a, /* something */
 		b:
 	}
+	a.b( /* jfkl */ )
 
 	// hello
 	if rt == nil /* comment inside */ {
