@@ -1,12 +1,26 @@
+// Copyright 2025 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// commentStack is an experiment that tries to represent comments
+// as state transitions in the go parser, via Cursors. It is adapted from gotype
+//
+// Right now, all it does is parse the example files and spit out
+// which pairs of cursors comments lie between and which construction
+// "anchors them"
+//
+// I'm working on an example that shows modification
 package main
 
 import (
 	"cmp"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/build"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"log"
 	"path/filepath"
 	"slices"
@@ -14,21 +28,41 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DanielMorsing/commentStack/typeindex"
 	"golang.org/x/tools/go/ast/edge"
 	"golang.org/x/tools/go/ast/inspector"
 )
 
 var (
-	fset = token.NewFileSet()
+	fset      = token.NewFileSet()
+	parseonly = flag.Bool("parseonly", false, "parse and dump http example (no typecheck)")
 )
 
 func main() {
-	files, err := parseDir("./testdata/src/a/smol")
+	flag.Parse()
+	pkgpath := "./testdata/src/a/smol"
+	if *parseonly {
+		pkgpath = "./testdata/src/a/http"
+	}
+	files, err := parseDir(pkgpath)
 	if err != nil {
 		log.Fatalf("cannot parse: %s", err)
 	}
 	inspect := inspector.New(files)
 	root := inspect.Root()
+
+	var check *types.Checker
+	var tindex *typeindex.Index
+	if !*parseonly {
+		pkg := types.NewPackage("./testdata/src/a/smol/", "a")
+		check = types.NewChecker(nil, fset, pkg, nil)
+		err = check.Files(files)
+		if err != nil {
+			log.Fatal("typecheck", err.Error())
+		}
+		tindex = typeindex.New(inspect, pkg, check.Info)
+		_ = tindex
+	}
 
 	for fileCur := range root.Preorder((*ast.File)(nil)) {
 		file := fileCur.Node().(*ast.File)
@@ -58,6 +92,12 @@ func main() {
 			}
 			r.adjust()
 			ranges[i] = r
+			if *parseonly {
+				fmt.Println(r.String())
+			}
+		}
+		if *parseonly {
+			continue
 		}
 		anchors := make(map[int32]*commentRange)
 		for _, r := range ranges {
@@ -85,8 +125,10 @@ func main() {
 			if len(ret.Results) != 1 {
 				panic("multiple results to return")
 			}
-			c := ret.Results[0].(*ast.CallExpr)
-			ast.Print(fset, c.Fun)
+			_ = ret.Results[0].(*ast.CallExpr)
+			decl := declCur.Node().(*ast.FuncDecl)
+			obj := check.ObjectOf(decl.Name)
+			_ = obj
 		}
 	}
 }
