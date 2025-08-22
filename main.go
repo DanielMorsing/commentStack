@@ -64,6 +64,7 @@ func main() {
 			fmt.Println(r.String())
 		}
 	}
+
 }
 
 type Anchor int
