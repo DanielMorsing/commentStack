@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/tools/go/ast/edge"
 	"golang.org/x/tools/go/ast/inspector"
 )
 
@@ -33,70 +34,29 @@ func main() {
 
 		fmt.Println(fset.Position(file.Name.Pos()).Filename)
 		sortComments(file.Comments)
-		ranges := make([]cursorRange, len(file.Comments))
-		var idx int
-		prev := fileCur
-		// roughly, each comment will be bounded by 2 cursors.
-		// One just before the comment and one just after.
-		//
-		// Note that because our "after" is any construction
-		// that introduces a token after the comment, the after cursor
-		// can be a parent in the AST
-		fmt.Printf("looking for %s\n", line(file.Comments[idx]))
-		fileCur.Inspect(nil, func(c inspector.Cursor) bool {
-			// should probably filter with the cursor, but
-			// these are leaf nodes, so no biggie
-			if _, ok := c.Node().(*ast.CommentGroup); ok {
-				return false
-			}
-			if idx == len(file.Comments) {
-				return false
-			}
-			fmt.Printf("\t%T\t%s\n", c.Node(), line(c.Node()))
-			cmt := file.Comments[idx]
-			n := c.Node()
-			// comment within this AST node, descend
-			if n.Pos() < cmt.Pos() && cmt.End() < n.End() {
-				prev = c
-				return true
-			}
-			if cmt.End() < n.Pos() {
-				// we have 2 bounding cursors, but it might be down
-				// a different subtree of the AST. Check the parent of the
-				// previous cursor, to see if it "contains" the comment
-				parent := prev.Parent().Node()
-				if cmt.End() < parent.End() && parent.End() < n.Pos() {
-					c = prev.Parent()
+		ranges := make([]commentRange, len(file.Comments))
+		// Each comment will be bounded by 2 cursors.
+		// One cursor for the node that last produced a token before the comment
+		// and one cursor for the node that will introduce a token after the comment
+		for i, cmt := range file.Comments {
+			fmt.Printf("looking for %s\n", line(cmt))
+			outer, _ := fileCur.FindByPos(cmt.Pos(), cmt.Pos())
+			n := outer.Node()
+			fmt.Printf("starting at %T %s\n", n, line(n))
+			prev := outer
+			next := outer
+			for cur := range outer.Children() {
+				if cur.Node().End() < cmt.Pos() {
+					prev = cur
+					continue
 				}
-				ranges[idx] = cursorRange{prev, c}
-				idx++
-				prev = c
-				if idx == len(file.Comments) {
-					return false
-				} else {
-					fmt.Printf("looking for %s\n", line(file.Comments[idx]))
-				}
-				return true
+				next = cur
+				break
 			}
-			prev = c
-			return false
-		})
-		// we ran off the edge, walk up the AST of the previous cursor
-		// until we reach the first point that doesn't contain
-		// the comment. It and it's parent are the bounding cursors
-		if idx == len(file.Comments)-1 {
-
-			cmt := file.Comments[idx]
-			var c inspector.Cursor
-			for c = range prev.Enclosing() {
-				n := c.Node()
-				if n.End() < cmt.Pos() {
-					prev = c
-				}
-			}
-			ranges[idx] = cursorRange{prev, prev.Parent()}
+			r := commentRange{cmt, prev, next}
+			r.adjust()
+			ranges[i] = r
 		}
-		fmt.Println()
 		for i, r := range ranges {
 			fmt.Println(line(file.Comments[i]))
 			prev := r.prev.Node()
@@ -107,9 +67,31 @@ func main() {
 	}
 }
 
-type cursorRange struct {
-	prev inspector.Cursor
-	next inspector.Cursor
+type commentRange struct {
+	comment *ast.CommentGroup
+	prev    inspector.Cursor
+	next    inspector.Cursor
+}
+
+func (r *commentRange) adjust() {
+	left := r.prev
+	right := r.next
+	parent := left.Parent()
+	// the boundary between a parent and a child
+	// is always unambiguous
+	if right.Parent() != parent {
+		return
+	}
+	lk, _ := left.ParentEdge()
+	rk, _ := right.ParentEdge()
+	if lk == edge.KeyValueExpr_Key && rk == edge.KeyValueExpr_Value {
+		kv := parent.Node().(*ast.KeyValueExpr)
+		if r.comment.Pos() < kv.Colon {
+			r.next = parent
+		} else {
+			r.prev = parent
+		}
+	}
 }
 
 func GetBounds(fset *token.FileSet, prev ast.Node, node ast.Node, next ast.Node) (up, left, right token.Pos) {
