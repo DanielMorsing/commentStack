@@ -204,9 +204,18 @@ func (r *commentRange) adjust() {
 	// cursors and rely on anchoring to disambiguate which cursor
 	// the comment belongs to.
 	//
+	// The thing to imagine here is that every token that
+	// an AST would produce needs to be covered by a childs range
+	// or have a distinct position in the node.
+	//
 	// Luckily, this is what gofmt has done since forever.
 	// gofmt'ed code will always have the comma after the comment
 	// if the 2 edges occur on the same line
+	//
+	// TODO: This could be fixed by adding a special expression
+	// node in go/ast whos ranges would cover syntactic elements like
+	// the commas in caseclauses. This would obviously be a special mode
+	// and would require a proposal
 	switch lp {
 	case edge.CaseClause_List, edge.FieldList_List:
 		return
