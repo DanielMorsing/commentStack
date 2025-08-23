@@ -116,6 +116,13 @@ func main() {
 				Transitions: &transitionsPrinter{},
 			}
 			cfg.Fprint(io.Discard, fset, f)
+			fcur, _ := root.FindNode(f)
+			for c := range fcur.Preorder() {
+				fmt.Printf("%T\n", c.Node())
+				if f, ok := c.Node().(*ast.FieldList); ok {
+					ast.Print(fset, f)
+				}
+			}
 		}
 	}
 }
@@ -123,7 +130,10 @@ func main() {
 type transitionsPrinter struct{}
 
 func (t *transitionsPrinter) Step(before ast.Node, after ast.Node) *ast.CommentGroup {
-	fmt.Printf("%T->%T\n", before, after)
+	if before == nil {
+		return nil
+	}
+	fmt.Printf("%T->%T %s\n", before, after, line(before))
 	return nil
 }
 

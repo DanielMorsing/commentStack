@@ -900,7 +900,10 @@ func (p *printer) setPos(pos token.Pos) {
 // taking into account the amount and structure of any pending white-
 // space for best comment placement. Then, any leftover whitespace is
 // printed, followed by the actual token.
-func (p *printer) print(args ...any) {
+func (p *printer) print(n ast.Node, args ...any) {
+	if n != nil && n != p.lastNode {
+		p.step(n)
+	}
 	for _, arg := range args {
 		// information about the current arg
 		var data string
@@ -1142,7 +1145,7 @@ func (p *printer) printNode(node any) error {
 	// get comments ready for use
 	p.nextComment()
 
-	p.print(pmode(0))
+	p.print(nil, pmode(0))
 
 	// format node
 	switch n := node.(type) {
