@@ -20,61 +20,41 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
-	"go/types"
 	"log"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/DanielMorsing/commentStack/typeindex"
 	"golang.org/x/tools/go/ast/edge"
 	"golang.org/x/tools/go/ast/inspector"
 )
 
 var (
-	fset      = token.NewFileSet()
-	parseonly = flag.Bool("parseonly", false, "parse and dump http example (no typecheck)")
+	fset = token.NewFileSet()
+	demo = flag.String("demo", "parse", "which demo to run, one of [parse]")
 )
 
 func main() {
 	flag.Parse()
-	pkgpath := "./testdata/src/a/smol"
-	if *parseonly {
-		pkgpath = "./testdata/src/a/http"
-	}
+	pkgpath := flag.Arg(0)
 	files, err := parseDir(pkgpath)
 	if err != nil {
 		log.Fatalf("cannot parse: %s", err)
 	}
 	inspect := inspector.New(files)
 	root := inspect.Root()
+	fileRanges := make([][]*commentRange, 0, len(files))
 
-	var check *types.Checker
-	var tindex *typeindex.Index
-	if !*parseonly {
-		pkg := types.NewPackage("./testdata/src/a/smol/", "a")
-		check = types.NewChecker(nil, fset, pkg, nil)
-		err = check.Files(files)
-		if err != nil {
-			log.Fatal("typecheck", err.Error())
-		}
-		tindex = typeindex.New(inspect, pkg, check.Info)
-		_ = tindex
-	}
+	for _, file := range files {
 
-	for fileCur := range root.Preorder((*ast.File)(nil)) {
-		file := fileCur.Node().(*ast.File)
-
-		fmt.Println(fset.Position(file.Name.Pos()).Filename)
 		sortComments(file.Comments)
 		ranges := make([]*commentRange, len(file.Comments))
 		// Each comment will be bounded by 2 cursors.
 		// One cursor for the node that last produced a token before the comment
 		// and one cursor for the node that will introduce a token after the comment
 		for i, cmt := range file.Comments {
-			outer, _ := fileCur.FindByPos(cmt.Pos(), cmt.Pos())
+			outer, _ := root.FindByPos(cmt.Pos(), cmt.Pos())
 			prev := outer
 			next := outer
 			for cur := range outer.Children() {
@@ -92,43 +72,15 @@ func main() {
 			}
 			r.adjust()
 			ranges[i] = r
-			if *parseonly {
+		}
+		fileRanges = append(fileRanges, ranges)
+	}
+	if *demo == "parse" {
+		for i, f := range files {
+			fmt.Println(fset.Position(f.Name.Pos()).Filename)
+			for _, r := range fileRanges[i] {
 				fmt.Println(r.String())
 			}
-		}
-		if *parseonly {
-			continue
-		}
-		anchors := make(map[int32]*commentRange)
-		for _, r := range ranges {
-			anchor := r.prev
-			if r.anchor == AnchorRight {
-				anchor = r.next
-			}
-			anchors[anchor.Index()] = r
-		}
-		// toy example of finding go:fix inline directives
-		for declCur := range fileCur.Preorder((*ast.FuncDecl)(nil)) {
-			idx := declCur.Index()
-			cmt, ok := anchors[idx]
-			if !ok {
-				continue
-			}
-			if cmt.comment.List[0].Text != "//go:fix inline" {
-				continue
-			}
-			retCur := slices.Collect(declCur.Preorder((*ast.ReturnStmt)(nil)))
-			if len(retCur) != 1 {
-				panic("multiple returns in inline")
-			}
-			ret := retCur[0].Node().(*ast.ReturnStmt)
-			if len(ret.Results) != 1 {
-				panic("multiple results to return")
-			}
-			_ = ret.Results[0].(*ast.CallExpr)
-			decl := declCur.Node().(*ast.FuncDecl)
-			obj := check.ObjectOf(decl.Name)
-			_ = obj
 		}
 	}
 }
@@ -163,7 +115,7 @@ func (r *commentRange) String() string {
 		anchor = " (ANCHOR)"
 	}
 	next := r.next.Node()
-	fmt.Fprintf(&b, "\tnext %T %s%s\n", next, line(next), anchor)
+	fmt.Fprintf(&b, "\tnext %T %s%s", next, line(next), anchor)
 	return b.String()
 }
 
@@ -290,11 +242,9 @@ func line(n ast.Node) string {
 }
 
 func sortComments(comms []*ast.CommentGroup) {
-	begin := time.Now()
 	slices.SortFunc(comms, func(a, b *ast.CommentGroup) int {
 		return cmp.Compare(a.Pos(), b.Pos())
 	})
-	fmt.Println(time.Since(begin))
 }
 
 func parseDir(dir string) ([]*ast.File, error) {
