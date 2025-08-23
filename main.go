@@ -20,8 +20,8 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
+	"io"
 	"log"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -87,10 +87,44 @@ func main() {
 			}
 		}
 	case "passthrough":
+		// remove all comments from the AST
+		// TODO: if the go printer has a change
+		// then this should probably be a flag.
+		for cur := range root.Preorder((*ast.CommentGroup)(nil)) {
+			parent := cur.Parent().Node()
+			switch n := parent.(type) {
+			case *ast.Field:
+				n.Doc = nil
+			case *ast.File:
+				n.Doc = nil
+			case *ast.FuncDecl:
+				n.Doc = nil
+			case *ast.GenDecl:
+				n.Doc = nil
+			case *ast.ImportSpec:
+				n.Doc = nil
+			case *ast.TypeSpec:
+				n.Doc = nil
+			case *ast.ValueSpec:
+				n.Doc = nil
+			}
+		}
 		for _, f := range files {
-			printer.Fprint(os.Stdout, fset, f)
+			// remove free floating comments
+			f.Comments = nil
+			cfg := printer.Config{
+				Transitions: &transitionsPrinter{},
+			}
+			cfg.Fprint(io.Discard, fset, f)
 		}
 	}
+}
+
+type transitionsPrinter struct{}
+
+func (t *transitionsPrinter) Step(before ast.Node, after ast.Node) *ast.CommentGroup {
+	fmt.Printf("%T->%T\n", before, after)
+	return nil
 }
 
 type Anchor int

@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	maxNewlines = 2     // max. number of newlines between source text
-	debug       = false // enable for debugging
+	maxNewlines = 2    // max. number of newlines between source text
+	debug       = true // enable for debugging
 	infinity    = 1 << 30
 )
 
@@ -94,6 +94,8 @@ type printer struct {
 	// Cache of most recently computed line position.
 	cachedPos  token.Pos
 	cachedLine int // line corresponding to cachedPos
+
+	lastNode ast.Node
 }
 
 func (p *printer) internalError(msg ...any) {
@@ -1318,6 +1320,22 @@ type Config struct {
 	Mode     Mode // default: 0
 	Tabwidth int  // default: 8
 	Indent   int  // default: 0 (all code is indented at least by this much)
+
+	// TODO(dmo): better name
+	Transitions Transitions
+}
+
+// TODO(dmo): better docs
+
+// Transitions gets called at every point before a token is emited that delimits
+// different ast nodes. Any commentgroup returned will be added verbatim to the output.
+// TODO(dmo): figure out if the commentgroup type is the right one here.
+//
+// TODO(dmo): can probably do something clever to have a cursor and the AST nodes
+// be in lockstep so we don't have to recalculate them from scratch, but the inspector
+// is fast, so leave it as ast.Nodes for now.
+type Transitions interface {
+	Step(before ast.Node, after ast.Node) *ast.CommentGroup
 }
 
 var printerPool = sync.Pool{

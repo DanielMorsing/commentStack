@@ -331,6 +331,7 @@ func (p *printer) parameters(fields *ast.FieldList, mode paramMode) {
 		openTok, closeTok = token.LBRACK, token.RBRACK
 	}
 	p.setPos(fields.Opening)
+	p.step(fields)
 	p.print(openTok)
 	if len(fields.List) > 0 {
 		prevLine := p.lineFor(fields.Opening)
@@ -818,6 +819,7 @@ func (p *printer) expr1(expr ast.Expr, prec1, depth int) {
 		p.print("BadExpr")
 
 	case *ast.Ident:
+		p.step(x)
 		p.print(x)
 
 	case *ast.BinaryExpr:
@@ -1735,6 +1737,7 @@ func (p *printer) spec(spec ast.Spec, n int, doIndent bool) {
 func (p *printer) genDecl(d *ast.GenDecl) {
 	p.setComment(d.Doc)
 	p.setPos(d.Pos())
+	p.step(d)
 	p.print(d.Tok, blank)
 
 	if d.Lparen.IsValid() || len(d.Specs) != 1 {
@@ -1920,6 +1923,7 @@ func (p *printer) distanceFrom(startPos token.Pos, startOutCol int) int {
 func (p *printer) funcDecl(d *ast.FuncDecl) {
 	p.setComment(d.Doc)
 	p.setPos(d.Pos())
+	p.step(d)
 	p.print(token.FUNC, blank)
 	// We have to save startCol only after emitting FUNC; otherwise it can be on a
 	// different line (all whitespace preceding the FUNC is emitted only when the
@@ -1989,9 +1993,19 @@ func (p *printer) declList(list []ast.Decl) {
 	}
 }
 
+func (p *printer) step(n ast.Node) {
+	var cmt *ast.CommentGroup
+	if p.Config.Transitions != nil {
+		cmt = p.Config.Transitions.Step(p.lastNode, n)
+	}
+	p.lastNode = n
+	p.setComment(cmt)
+}
+
 func (p *printer) file(src *ast.File) {
 	p.setComment(src.Doc)
 	p.setPos(src.Pos())
+	p.step(src)
 	p.print(token.PACKAGE, blank)
 	p.expr(src.Name)
 	p.declList(src.Decls)
