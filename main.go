@@ -213,13 +213,15 @@ func (r *commentRange) adjust() {
 	case edge.SelectorExpr_X:
 		return
 	}
-	panic(fmt.Sprintf("unhandled adjust %T[%s,%s]", parent.Node(), lp, rp))
+	panic(fmt.Sprintf("unhandled adjust %T[%s,%s] %s", parent.Node(), lp, rp, line(cmt)))
 }
 
 var tokenless = map[edge.Kind]bool{
-	edge.File_Decls:     true,
-	edge.IfStmt_Cond:    true,
-	edge.BlockStmt_List: true,
+	edge.File_Decls:      true,
+	edge.IfStmt_Cond:     true,
+	edge.BlockStmt_List:  true,
+	edge.CaseClause_Body: true,
+	edge.GenDecl_Specs:   true,
 }
 
 func lineRange(fset *token.FileSet, pos token.Pos) (begin, end token.Pos) {
