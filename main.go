@@ -21,10 +21,13 @@ import (
 	"go/parser"
 	"go/token"
 	"log"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/DanielMorsing/commentStack/go/printer"
 
 	"golang.org/x/tools/go/ast/edge"
 	"golang.org/x/tools/go/ast/inspector"
@@ -75,12 +78,17 @@ func main() {
 		}
 		fileRanges = append(fileRanges, ranges)
 	}
-	if *demo == "parse" {
+	switch *demo {
+	case "parse":
 		for i, f := range files {
 			fmt.Println(fset.Position(f.Name.Pos()).Filename)
 			for _, r := range fileRanges[i] {
 				fmt.Println(r.String())
 			}
+		}
+	case "passthrough":
+		for _, f := range files {
+			printer.Fprint(os.Stdout, fset, f)
 		}
 	}
 }
