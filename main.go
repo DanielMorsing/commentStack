@@ -119,9 +119,6 @@ func main() {
 			fcur, _ := root.FindNode(f)
 			for c := range fcur.Preorder() {
 				fmt.Printf("%T\n", c.Node())
-				if f, ok := c.Node().(*ast.FieldList); ok {
-					ast.Print(fset, f)
-				}
 			}
 		}
 	}
@@ -132,6 +129,11 @@ type transitionsPrinter struct{}
 func (t *transitionsPrinter) Step(before ast.Node, after ast.Node) *ast.CommentGroup {
 	if before == nil {
 		return nil
+	}
+	if f, ok := before.(*ast.FieldList); ok {
+		if !f.Opening.IsValid() {
+			fmt.Printf("fieldlist %s\n", line(before))
+		}
 	}
 	fmt.Printf("%T->%T %s\n", before, after, line(before))
 	return nil
