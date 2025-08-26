@@ -276,13 +276,7 @@ func (r *commentRange) adjust() {
 	//
 	// There is no way from looking at the ranges embedded
 	// in the AST whether the comma occurs before or after the
-	// comment. In this case, we keep the siblings as the bounding
-	// cursors and rely on anchoring to disambiguate which cursor
-	// the comment belongs to.
-	//
-	// The thing to imagine here is that every token that
-	// an AST would produce needs to be covered by a childs range
-	// or have a distinct position in the node.
+	// comment.
 	//
 	// Luckily, this is what gofmt has done since forever.
 	// gofmt'ed code will always have the comma after the comment
@@ -293,9 +287,8 @@ func (r *commentRange) adjust() {
 	// the commas in caseclauses. This would obviously be a special mode
 	// and would require a proposal
 	switch lp {
-	case edge.CaseClause_List, edge.FieldList_List:
-		return
-	case edge.SelectorExpr_X:
+	case edge.CaseClause_List, edge.SelectorExpr_X, edge.FieldList_List:
+		r.prev = r.prev.Parent()
 		return
 	}
 	panic(fmt.Sprintf("unhandled adjust %T[%s,%s] %s", parent.Node(), lp, rp, line(cmt)))
