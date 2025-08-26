@@ -1995,9 +1995,10 @@ func (p *printer) declList(list []ast.Decl) {
 
 func (p *printer) step(n ast.Node) {
 	var cmt *ast.CommentGroup
-	if p.Config.Transitions != nil {
-		cmt = p.Config.Transitions.Step(p.lastNode, n)
+	if p.Config.Transitions == nil {
+		return
 	}
+	cmt = p.Config.Transitions.Step(p.lastNode, n)
 	p.lastNode = n
 	p.setComment(cmt)
 }

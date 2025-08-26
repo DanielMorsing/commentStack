@@ -27,7 +27,7 @@ var (
 )
 
 func testprint(out io.Writer, node ast.Node) {
-	if err := (&Config{TabIndent | UseSpaces | normalizeNumbers, 8, 0}).Fprint(out, fset, node); err != nil {
+	if err := (&Config{TabIndent | UseSpaces | normalizeNumbers, 8, 0, nil}).Fprint(out, fset, node); err != nil {
 		log.Fatalf("print error: %s", err)
 	}
 }
