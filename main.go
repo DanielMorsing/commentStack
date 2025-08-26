@@ -91,6 +91,7 @@ func main() {
 				next:    next,
 			}
 			r.adjust()
+			r.adjustLine()
 			ranges[i] = r
 		}
 		fileRanges = append(fileRanges, ranges)
@@ -167,41 +168,44 @@ func commentKind(ek edge.Kind, _ int) bool {
 	return false
 }
 
-type Anchor int
+type LinePosition int
 
 const (
-	AnchorNone Anchor = iota
-	AnchorLeft
-	AnchorRight
+	LinePrevious LinePosition = iota
+	LineBetween
+	LineNext
 )
 
 type commentRange struct {
-	comment *ast.CommentGroup
-	prev    inspector.Cursor
-	next    inspector.Cursor
-	anchor  Anchor
+	comment  *ast.CommentGroup
+	prev     inspector.Cursor
+	next     inspector.Cursor
+	position LinePosition
 }
 
 func (r *commentRange) String() string {
 	var b strings.Builder
 	fmt.Fprintln(&b, line(r.comment))
 	prev := r.prev.Node()
-	anchor := ""
-	if r.anchor == AnchorLeft {
-		anchor = " (ANCHOR)"
+	posStr := ""
+	if r.position == LinePrevious {
+		posStr = " <Comment>"
 	}
 	prevline := "<ROOT>"
 	if prev != nil {
 		prevline = line(prev)
 	}
-	fmt.Fprintf(&b, "\tprev %T %s%s\n", prev, prevline, anchor)
+	fmt.Fprintf(&b, "\tprev %T %s%s\n", prev, prevline, posStr)
+	if r.position == LineBetween {
+		fmt.Fprintln(&b, "\t<Comment>")
+	}
 
-	anchor = ""
-	if r.anchor == AnchorRight {
-		anchor = " (ANCHOR)"
+	posStr = ""
+	if r.position == LineNext {
+		posStr = "<Comment> "
 	}
 	next := r.next.Node()
-	fmt.Fprintf(&b, "\tnext %T %s%s", next, line(next), anchor)
+	fmt.Fprintf(&b, "\t%snext %T %s", posStr, next, line(next))
 	return b.String()
 }
 
@@ -210,14 +214,6 @@ func (r *commentRange) adjust() {
 	right := r.next
 	cmt := r.comment
 	parent := left.Parent()
-
-	cLine := fset.Position(cmt.Pos()).Line
-	lLine := fset.Position(left.Node().Pos()).Line
-	if cLine == lLine {
-		r.anchor = AnchorLeft
-	} else {
-		r.anchor = AnchorRight
-	}
 
 	// we ran off the edge of the node without finding any
 	// sub-nodes. This happens when the comment occurs
@@ -233,12 +229,6 @@ func (r *commentRange) adjust() {
 		if lparen < cmt.Pos() {
 			r.prev = right
 			r.next = right
-			line := fset.Position(lparen).Line
-			if line == cLine {
-				r.anchor = AnchorLeft
-			} else {
-				r.anchor = AnchorRight
-			}
 		}
 	}
 	if parent != right.Parent() {
@@ -309,6 +299,31 @@ func (r *commentRange) adjust() {
 		return
 	}
 	panic(fmt.Sprintf("unhandled adjust %T[%s,%s] %s", parent.Node(), lp, rp, line(cmt)))
+}
+
+func (r *commentRange) adjustLine() {
+	prev := r.prev.Node()
+	next := r.next.Node()
+
+	cLine := fset.Position(r.comment.Pos()).Line
+	nLine := fset.Position(next.Pos()).Line
+	if prev == nil {
+		r.position = LineBetween
+		if cLine == nLine {
+			r.position = LineNext
+		}
+		return
+	}
+	pLine := fset.Position(prev.Pos()).Line
+	if pLine == nLine || (cLine != pLine && cLine != nLine) {
+		r.position = LineBetween
+	} else if cLine == pLine {
+		r.position = LinePrevious
+	} else if cLine == nLine {
+		r.position = LineNext
+	} else {
+		panic("got the logic wrong")
+	}
 }
 
 var tokenless = map[edge.Kind]bool{
