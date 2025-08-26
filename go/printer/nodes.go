@@ -1173,14 +1173,14 @@ func (p *printer) selectorExpr(x *ast.SelectorExpr, depth int, isMethod bool) bo
 	if line := p.lineFor(x.Sel.Pos()); p.pos.IsValid() && p.pos.Line < line {
 		p.print(nil, indent, newline)
 		p.setPos(x.Sel.Pos())
-		p.print(x.Sel)
+		p.print(x.Sel, x.Sel)
 		if !isMethod {
 			p.print(nil, unindent)
 		}
 		return true
 	}
 	p.setPos(x.Sel.Pos())
-	p.print(x.Sel)
+	p.print(x.Sel, x.Sel)
 	return false
 }
 

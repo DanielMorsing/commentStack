@@ -901,6 +901,9 @@ func (p *printer) setPos(pos token.Pos) {
 // space for best comment placement. Then, any leftover whitespace is
 // printed, followed by the actual token.
 func (p *printer) print(n ast.Node, args ...any) {
+	if len(args) == 0 {
+		panic("no token for print")
+	}
 	if n != nil && n != p.lastNode {
 		p.step(n)
 	}
