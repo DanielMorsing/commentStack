@@ -20,8 +20,8 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
-	"io"
 	"log"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -50,7 +50,10 @@ func main() {
 	fileRanges := make([][]*commentRange, 0, len(files))
 
 	for _, file := range files {
-
+		fileCur, ok := root.FindNode(file)
+		if !ok {
+			log.Panicf("no cursor for file")
+		}
 		sortComments(file.Comments)
 		ranges := make([]*commentRange, len(file.Comments))
 		// Each comment will be bounded by 2 cursors.
@@ -58,6 +61,20 @@ func main() {
 		// and one cursor for the node that will introduce a token after the comment
 		for i, cmt := range file.Comments {
 			outer, _ := root.FindByPos(cmt.Pos(), cmt.Pos())
+			for commentKind(outer.ParentEdge()) {
+				outer = outer.Parent()
+			}
+			if file == outer.Node() && cmt.Pos() < file.Package {
+				// comments before the package keyword live in a special space between the
+				// root cursor and the file
+				r := &commentRange{
+					comment: cmt,
+					prev:    root,
+					next:    fileCur,
+				}
+				ranges[i] = r
+				continue
+			}
 			prev := outer
 			next := outer
 			for cur := range outer.Children() {
@@ -115,7 +132,7 @@ func main() {
 			cfg := printer.Config{
 				Transitions: &transitionsPrinter{},
 			}
-			cfg.Fprint(io.Discard, fset, f)
+			cfg.Fprint(os.Stdout, fset, f)
 			fcur, _ := root.FindNode(f)
 			for c := range fcur.Preorder() {
 				fmt.Printf("%T\n", c.Node())
@@ -137,6 +154,17 @@ func (t *transitionsPrinter) Step(before ast.Node, after ast.Node) *ast.CommentG
 	}
 	fmt.Printf("%T->%T %s\n", before, after, line(before))
 	return nil
+}
+
+func commentKind(ek edge.Kind, _ int) bool {
+	// TODO(dmo): line comments??
+	switch ek {
+	case edge.Field_Doc, edge.File_Doc, edge.FuncDecl_Doc,
+		edge.ValueSpec_Doc, edge.TypeSpec_Doc, edge.ImportSpec_Doc,
+		edge.GenDecl_Doc, edge.CommentGroup_List:
+		return true
+	}
+	return false
 }
 
 type Anchor int
@@ -162,7 +190,11 @@ func (r *commentRange) String() string {
 	if r.anchor == AnchorLeft {
 		anchor = " (ANCHOR)"
 	}
-	fmt.Fprintf(&b, "\tprev %T %s%s\n", prev, line(prev), anchor)
+	prevline := "<ROOT>"
+	if prev != nil {
+		prevline = line(prev)
+	}
+	fmt.Fprintf(&b, "\tprev %T %s%s\n", prev, prevline, anchor)
 
 	anchor = ""
 	if r.anchor == AnchorRight {
