@@ -60,7 +60,7 @@ func main() {
 		// One cursor for the node that last produced a token before the comment
 		// and one cursor for the node that will introduce a token after the comment
 		for i, cmt := range file.Comments {
-			outer, _ := root.FindByPos(cmt.Pos(), cmt.Pos())
+			outer, _ := root.FindByPos(cmt.Pos(), cmt.End())
 			for commentKind(outer.ParentEdge()) {
 				outer = outer.Parent()
 			}
@@ -146,12 +146,28 @@ func findLimits(cmt *ast.CommentGroup, outer inspector.Cursor) *commentRange {
 	// These are the specific tokens that bound the comment
 	prevToken, nextToken := getTokens(outer, cmt)
 
+	prevCursor, _ := outer.FindByPos(prevToken, prevToken)
+	for {
+		parent := prevCursor.Parent()
+		if parent.Node().End() > cmt.Pos() {
+			break
+		}
+		prevCursor = parent
+	}
+	nextCursor, _ := outer.FindByPos(nextToken, nextToken)
+	for {
+		parent := nextCursor.Parent()
+		if parent.Node() == nil || cmt.End() > parent.Node().Pos() {
+			break
+		}
+		nextCursor = parent
+	}
 	return &commentRange{
 		comment:    cmt,
 		prevToken:  prevToken,
 		nextToken:  nextToken,
-		prevCursor: outer,
-		nextCursor: outer,
+		prevCursor: prevCursor,
+		nextCursor: nextCursor,
 	}
 }
 
@@ -374,8 +390,14 @@ func (r *commentRange) String() string {
 	var b strings.Builder
 	fmt.Fprintln(&b, line(r.comment))
 	fmt.Fprintf(&b, "\tprev %s\n", line(nt(r.prevToken)))
+	cursorstr := "<ROOT>"
+	cNode := r.prevCursor.Node()
+	if cNode != nil {
+		cursorstr = fmt.Sprintf("%T %s", cNode, line(cNode))
+	}
+	fmt.Fprintf(&b, "\tprev Cursor %s\n", cursorstr)
 	fmt.Fprintf(&b, "\tnext %s\n", line(nt(r.nextToken)))
-	fmt.Fprintf(&b, "\tCursor %s\n", line(r.nextCursor.Node()))
+	fmt.Fprintf(&b, "\tnext Cursor %T %s\n", r.nextCursor.Node(), line(r.nextCursor.Node()))
 	return b.String()
 }
 
