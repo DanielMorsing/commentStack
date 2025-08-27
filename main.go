@@ -143,11 +143,16 @@ func (t *transitionsPrinter) Step(before ast.Node, after ast.Node) *ast.CommentG
 }
 
 func findLimits(cmt *ast.CommentGroup, outer inspector.Cursor) *commentRange {
-	rang := &commentRange{
-		comment: cmt,
+	// These are the specific tokens that bound the comment
+	prevToken, nextToken := getTokens(outer, cmt)
+
+	return &commentRange{
+		comment:    cmt,
+		prevToken:  prevToken,
+		nextToken:  nextToken,
+		prevCursor: outer,
+		nextCursor: outer,
 	}
-	rang.prevToken, rang.nextToken = getTokens(outer, cmt)
-	return rang
 }
 
 func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Pos) {
@@ -161,11 +166,11 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		}
 		return n.Len.Pos(), n.Elt.Pos()
 	case *ast.AssignStmt:
-		begin, end, ok := commentBetweenList(token.NoPos, n.Lhs, n.TokPos, cmt)
+		begin, end, ok := commentBetweenList(nt(token.NoPos), n.Lhs, nt(n.TokPos), cmt)
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetweenList(n.TokPos, n.Rhs, token.NoPos, cmt)
+		begin, end, ok = commentBetweenList(nt(n.TokPos), n.Rhs, nt(token.NoPos), cmt)
 		if ok {
 			return begin, end
 		}
@@ -183,7 +188,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if len(n.List) == 0 {
 			return n.Lbrace, n.Rbrace
 		}
-		begin, end, ok := commentBetweenList(n.Lbrace, n.List, n.Rbrace, cmt)
+		begin, end, ok := commentBetweenList(nt(n.Lbrace), n.List, nt(n.Rbrace), cmt)
 		if ok {
 			return begin, end
 		}
@@ -198,13 +203,13 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if n.Ellipsis != token.NoPos {
 			endtok = n.Ellipsis
 		}
-		begin, end, ok := commentBetweenList(n.Lparen, n.Args, endtok, cmt)
+		begin, end, ok := commentBetweenList(nt(n.Lparen), n.Args, nt(endtok), cmt)
 		if ok {
 			return begin, end
 		}
 		return n.Ellipsis, n.Rparen
 	case *ast.CaseClause:
-		begin, end, ok := commentBetweenList(n.Case, n.List, n.Colon, cmt)
+		begin, end, ok := commentBetweenList(nt(n.Case), n.List, nt(n.Colon), cmt)
 		if ok {
 			return begin, end
 		}
@@ -223,17 +228,31 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 			k, i := cur.ParentEdge()
 			endtok = body.ChildAt(k, i+1).Node().Pos()
 		}
-		begin, end, ok = commentBetweenList(n.Colon, n.List, endtok, cmt)
+		begin, end, ok = commentBetweenList(nt(n.Colon), n.Body, nt(endtok), cmt)
 		if !ok {
 			panic("did not find comment")
 		}
 		return begin, end
 
+	case *ast.CompositeLit:
+		begin, end, ok := commentBetween(n.Type, nt(n.Lbrace), cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetweenList(nt(n.Lbrace), n.Elts, nt(n.Rbrace), cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.FieldList:
+		begin, end, ok := commentBetweenList(nt(n.Opening), n.List, nt(n.Closing), cmt)
+		if ok {
+			return begin, end
+		}
 	case *ast.File:
 		if cmt.End() < n.Name.Pos() {
 			return n.Package, n.Name.Pos()
 		}
-		begin, end, ok := commentBetweenList(n.Name.Pos(), n.Decls, n.FileEnd, cmt)
+		begin, end, ok := commentBetweenList(n.Name, n.Decls, nt(n.FileEnd), cmt)
 		if ok {
 			return begin, end
 		}
@@ -247,22 +266,77 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if cmt.End() < nextTok {
 			return n.Type.Func, nextTok
 		}
-	case *ast.IfStmt:
+	case *ast.GenDecl:
+		begintok := n.TokPos
+		if n.Lparen != token.NoPos {
+			begintok = n.Lparen
+			begin, end, ok := commentBetween(nt(n.TokPos), nt(n.Lparen), cmt)
+			if ok {
+				return begin, end
+			}
+		}
+		begin, end, ok := commentBetweenList(nt(begintok), n.Specs, nt(n.Rparen), cmt)
+		if ok {
+			return begin, end
+		}
 
+	case *ast.IfStmt:
+		beginNode := ast.Node(nt(n.If))
+		if n.Init != nil {
+			beginNode = n.Init
+			begin, end, ok := commentBetween(nt(n.If), n.Init, cmt)
+			if ok {
+				return begin, end
+			}
+		}
+		begin, end, ok := commentBetween(beginNode, n.Cond, cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetween(n.Cond, n.Body, cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetween(n.Body, n.Else, cmt)
+		if ok {
+			return begin, end
+		}
+		panic("did not find comment in if stmt")
+	case *ast.KeyValueExpr:
+		begin, end, ok := commentBetween(n.Key, nt(n.Colon), cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetween(nt(n.Colon), n.Value, cmt)
+		if ok {
+			return begin, end
+		}
 	}
 	log.Panicf("unhandled node %T, %s", cur.Node(), line(cmt))
 	panic("unreachable")
 }
 
-func commentBetweenList[L ~[]N, N ast.Node](begin token.Pos, nodeList L, end token.Pos, cmt *ast.CommentGroup) (token.Pos, token.Pos, bool) {
-	if begin.IsValid() && end.IsValid() && len(nodeList) == 0 {
-		if cmt.End() < begin || end < cmt.Pos() {
+type nt token.Pos
+
+func (n nt) Pos() token.Pos { return token.Pos(n) }
+func (n nt) End() token.Pos { return token.Pos(n) }
+
+func commentBetween(begin ast.Node, end ast.Node, cmt *ast.CommentGroup) (token.Pos, token.Pos, bool) {
+	if begin.End() < cmt.Pos() && cmt.End() < end.Pos() {
+		return begin.End(), end.Pos(), true
+	}
+	return token.NoPos, token.NoPos, false
+}
+
+func commentBetweenList[L ~[]N, N ast.Node](begin ast.Node, nodeList L, end ast.Node, cmt *ast.CommentGroup) (token.Pos, token.Pos, bool) {
+	if begin.End().IsValid() && end.Pos().IsValid() && len(nodeList) == 0 {
+		if cmt.End() < begin.End() || end.Pos() < cmt.Pos() {
 			panic("bad call")
 		}
-		return begin, end, true
+		return begin.End(), end.Pos(), true
 	}
-	if begin.IsValid() && len(nodeList) > 0 && cmt.End() < nodeList[0].Pos() {
-		return begin, nodeList[0].Pos(), true
+	if begin.End().IsValid() && len(nodeList) > 0 && cmt.End() < nodeList[0].Pos() {
+		return begin.End(), nodeList[0].Pos(), true
 	}
 	for i := 1; i < len(nodeList); i++ {
 		pn := nodeList[i-1]
@@ -271,8 +345,8 @@ func commentBetweenList[L ~[]N, N ast.Node](begin token.Pos, nodeList L, end tok
 			return pn.End(), nn.Pos(), true
 		}
 	}
-	if cmt.End() < end {
-		return nodeList[len(nodeList)-1].End(), end, true
+	if cmt.End() < end.Pos() {
+		return nodeList[len(nodeList)-1].End(), end.Pos(), true
 	}
 	return token.NoPos, token.NoPos, false
 }
@@ -288,187 +362,21 @@ func commentKind(ek edge.Kind, _ int) bool {
 	return false
 }
 
-type LinePosition int
-
-const (
-	LinePrevious LinePosition = iota
-	LineBetween
-	LineNext
-)
-
 type commentRange struct {
 	comment    *ast.CommentGroup
 	prevCursor inspector.Cursor
 	nextCursor inspector.Cursor
 	prevToken  token.Pos
 	nextToken  token.Pos
-	position   LinePosition
 }
 
 func (r *commentRange) String() string {
 	var b strings.Builder
 	fmt.Fprintln(&b, line(r.comment))
-	prev := r.prevCursor.Node()
-	posStr := ""
-	if r.position == LinePrevious {
-		posStr = " <Comment>"
-	}
-	prevline := "<ROOT>"
-	if prev != nil {
-		prevline = line(prev)
-	}
-	fmt.Fprintf(&b, "\tprev %T %s%s\n", prev, prevline, posStr)
-	if r.position == LineBetween {
-		fmt.Fprintln(&b, "\t<Comment>")
-	}
-
-	posStr = ""
-	if r.position == LineNext {
-		posStr = "<Comment> "
-	}
-	next := r.nextCursor.Node()
-	fmt.Fprintf(&b, "\t%snext %T %s", posStr, next, line(next))
+	fmt.Fprintf(&b, "\tprev %s\n", line(nt(r.prevToken)))
+	fmt.Fprintf(&b, "\tnext %s\n", line(nt(r.nextToken)))
+	fmt.Fprintf(&b, "\tCursor %s\n", line(r.nextCursor.Node()))
 	return b.String()
-}
-
-func (r *commentRange) adjust() {
-	left := r.prevCursor
-	right := r.nextCursor
-	cmt := r.comment
-	parent := left.Parent()
-
-	// we ran off the edge of the node without finding any
-	// sub-nodes. This happens when the comment occurs
-	// inside empty postfix constructions (like function calls)
-	call, ok := right.Node().(*ast.CallExpr)
-	if left.Parent() == right && ok {
-		// we have a comment inside the call parens
-		lparen := call.Lparen
-		if lparen < cmt.Pos() {
-			r.prevCursor = right
-			r.nextCursor = right
-		}
-	}
-	if parent != right.Parent() {
-		return
-	}
-
-	lp, _ := left.ParentEdge()
-	rp, _ := right.ParentEdge()
-
-	// binary constructions with tokens between them
-	tok := token.NoPos
-	switch lp {
-	case edge.AssignStmt_Lhs:
-		astmt := parent.Node().(*ast.AssignStmt)
-		tok = astmt.TokPos
-	case edge.KeyValueExpr_Key:
-		kv := parent.Node().(*ast.KeyValueExpr)
-		tok = kv.Colon
-	case edge.BinaryExpr_X:
-		be := parent.Node().(*ast.BinaryExpr)
-		tok = be.OpPos
-	default:
-	}
-	if tok != token.NoPos {
-		if r.comment.Pos() < tok {
-			r.nextCursor = parent
-		} else {
-			r.prevCursor = parent
-		}
-		return
-	}
-	// Keyword "func" between doc and the rest of the decl
-	if lp == edge.FuncDecl_Doc {
-		r.prevCursor = parent
-		return
-	}
-
-	if tokenless[lp] {
-		return
-	}
-	// The AST doesn't currently let us unambiguously locate a comment
-	// within certain grammars.
-	// For example CaseClause:
-	//
-	// case a, /* comment */ b:
-	//
-	// There is no way from looking at the ranges embedded
-	// in the AST whether the comma occurs before or after the
-	// comment.
-	//
-	// Luckily, this is what gofmt and go/printer has done since forever.
-	// It uses linebreak heuristics to figure out when to emit the comment
-	// that we can replicate here.
-	//
-	// TODO: This could be fixed by adding a special expression
-	// node in go/ast whos ranges would cover syntactic elements like
-	// the commas in caseclauses. This would obviously be a special mode
-	// and would require a proposal
-	switch lp {
-	case edge.CaseClause_List, edge.FieldList_List:
-		// the comma comes after the comment, unless there is a newline
-		// between the 2 cases.
-		pLine := fset.Position(r.prevCursor.Node().End()).Line
-		nLine := fset.Position(r.nextCursor.Node().Pos()).Line
-		if pLine == nLine {
-			r.nextCursor = r.nextCursor.Parent()
-		} else {
-			r.prevCursor = r.prevCursor.Parent()
-		}
-		return
-	case edge.SelectorExpr_X:
-		// the dot always comes before the comment
-		r.prevCursor = r.prevCursor.Parent()
-		return
-	}
-	panic(fmt.Sprintf("unhandled adjust %T[%s,%s] %s", parent.Node(), lp, rp, line(cmt)))
-}
-
-func (r *commentRange) adjustLine() {
-	prev := r.prevCursor.Node()
-	next := r.nextCursor.Node()
-
-	cLine := fset.Position(r.comment.Pos()).Line
-	nLine := fset.Position(next.Pos()).Line
-	if prev == nil {
-		r.position = LineBetween
-		if cLine == nLine {
-			r.position = LineNext
-		}
-		return
-	}
-	pLine := fset.Position(prev.Pos()).Line
-	if pLine == nLine || (cLine != pLine && cLine != nLine) {
-		r.position = LineBetween
-	} else if cLine == pLine {
-		r.position = LinePrevious
-	} else if cLine == nLine {
-		r.position = LineNext
-	} else {
-		panic("got the logic wrong")
-	}
-}
-
-var tokenless = map[edge.Kind]bool{
-	edge.File_Decls:      true,
-	edge.IfStmt_Cond:     true,
-	edge.BlockStmt_List:  true,
-	edge.CaseClause_Body: true,
-	edge.GenDecl_Specs:   true,
-}
-
-func lineRange(fset *token.FileSet, pos token.Pos) (begin, end token.Pos) {
-	tokfile := fset.File(pos)
-	line := tokfile.Position(pos).Line
-	begin = tokfile.LineStart(line)
-	if tokfile.LineCount() < line+1 {
-		end = token.Pos(tokfile.Size())
-	} else {
-		end = tokfile.LineStart(line + 1)
-	}
-	return begin, end
-
 }
 
 func line(n ast.Node) string {
