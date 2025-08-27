@@ -221,10 +221,6 @@ func (r *commentRange) adjust() {
 	call, ok := right.Node().(*ast.CallExpr)
 	if left.Parent() == right && ok {
 		// we have a comment inside the call parens
-		// we represent this as 2 cursors to the call
-		// expression with the anchoring based whether
-		// the comment is on the same line as the opening
-		// or closing paren
 		lparen := call.Lparen
 		if lparen < cmt.Pos() {
 			r.prev = right
@@ -269,7 +265,8 @@ func (r *commentRange) adjust() {
 	if tokenless[lp] {
 		return
 	}
-	// The AST doesn't currently let us inspect certain grammars.
+	// The AST doesn't currently let us unambiguously locate a comment
+	// within certain grammars.
 	// For example CaseClause:
 	//
 	// case a, /* comment */ b:
@@ -278,16 +275,28 @@ func (r *commentRange) adjust() {
 	// in the AST whether the comma occurs before or after the
 	// comment.
 	//
-	// Luckily, this is what gofmt has done since forever.
-	// gofmt'ed code will always have the comma after the comment
-	// if the 2 edges occur on the same line
+	// Luckily, this is what gofmt and go/printer has done since forever.
+	// It uses linebreak heuristics to figure out when to emit the comment
+	// that we can replicate here.
 	//
 	// TODO: This could be fixed by adding a special expression
 	// node in go/ast whos ranges would cover syntactic elements like
 	// the commas in caseclauses. This would obviously be a special mode
 	// and would require a proposal
 	switch lp {
-	case edge.CaseClause_List, edge.SelectorExpr_X, edge.FieldList_List:
+	case edge.CaseClause_List, edge.FieldList_List:
+		// the comma comes after the comment, unless there is a newline
+		// between the 2 cases.
+		pLine := fset.Position(r.prev.Node().End()).Line
+		nLine := fset.Position(r.next.Node().Pos()).Line
+		if pLine == nLine {
+			r.next = r.next.Parent()
+		} else {
+			r.prev = r.prev.Parent()
+		}
+		return
+	case edge.SelectorExpr_X:
+		// the dot always comes before the comment
 		r.prev = r.prev.Parent()
 		return
 	}
