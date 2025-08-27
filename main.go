@@ -335,7 +335,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 type nt token.Pos
 
 func (n nt) Pos() token.Pos { return token.Pos(n) }
-func (n nt) End() token.Pos { return token.Pos(n) }
+func (n nt) End() token.Pos { return token.Pos(n + 1) }
 
 func commentBetween(begin ast.Node, end ast.Node, cmt *ast.CommentGroup) (token.Pos, token.Pos, bool) {
 	if begin.End() < cmt.Pos() && cmt.End() < end.Pos() {
