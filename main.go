@@ -68,31 +68,16 @@ func main() {
 				// comments before the package keyword live in a special space between the
 				// root cursor and the file
 				r := &commentRange{
-					comment: cmt,
-					prev:    root,
-					next:    fileCur,
+					comment:    cmt,
+					prevCursor: root,
+					nextCursor: fileCur,
+					prevToken:  file.FileStart,
+					nextToken:  file.Package,
 				}
 				ranges[i] = r
 				continue
 			}
-			prev := outer
-			next := outer
-			for cur := range outer.Children() {
-				if cur.Node().End() < cmt.Pos() {
-					prev = cur
-					continue
-				}
-				next = cur
-				break
-			}
-			r := &commentRange{
-				comment: cmt,
-				prev:    prev,
-				next:    next,
-			}
-			r.adjust()
-			r.adjustLine()
-			ranges[i] = r
+			ranges[i] = findLimits(cmt, outer)
 		}
 		fileRanges = append(fileRanges, ranges)
 	}
@@ -157,6 +142,141 @@ func (t *transitionsPrinter) Step(before ast.Node, after ast.Node) *ast.CommentG
 	return nil
 }
 
+func findLimits(cmt *ast.CommentGroup, outer inspector.Cursor) *commentRange {
+	rang := &commentRange{
+		comment: cmt,
+	}
+	rang.prevToken, rang.nextToken = getTokens(outer, cmt)
+	return rang
+}
+
+func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Pos) {
+	switch n := cur.Node().(type) {
+	case *ast.ArrayType:
+		if n.Len == nil {
+			return n.Lbrack, n.Elt.Pos()
+		}
+		if cmt.End() < n.Len.Pos() {
+			return n.Lbrack, n.Len.Pos()
+		}
+		return n.Len.Pos(), n.Elt.Pos()
+	case *ast.AssignStmt:
+		begin, end, ok := commentBetweenList(token.NoPos, n.Lhs, n.TokPos, cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetweenList(n.TokPos, n.Rhs, token.NoPos, cmt)
+		if ok {
+			return begin, end
+		}
+		panic("did not find comment in assign stmt")
+	case *ast.BasicLit:
+		panic("comments cannot occur in literals")
+	case *ast.BinaryExpr:
+		// comment can only occur before or after the op
+		// anything else, it would be found in the sub-expression
+		if cmt.End() < n.OpPos {
+			return n.X.End(), n.OpPos
+		}
+		return n.OpPos, n.Y.Pos()
+	case *ast.BlockStmt:
+		if len(n.List) == 0 {
+			return n.Lbrace, n.Rbrace
+		}
+		begin, end, ok := commentBetweenList(n.Lbrace, n.List, n.Rbrace, cmt)
+		if ok {
+			return begin, end
+		}
+		panic("did not find stmt")
+	case *ast.BranchStmt:
+		return n.TokPos, n.Label.Pos()
+	case *ast.CallExpr:
+		if cmt.End() < n.Lparen {
+			return n.Fun.End(), n.Lparen
+		}
+		endtok := n.Rparen
+		if n.Ellipsis != token.NoPos {
+			endtok = n.Ellipsis
+		}
+		begin, end, ok := commentBetweenList(n.Lparen, n.Args, endtok, cmt)
+		if ok {
+			return begin, end
+		}
+		return n.Ellipsis, n.Rparen
+	case *ast.CaseClause:
+		begin, end, ok := commentBetweenList(n.Case, n.List, n.Colon, cmt)
+		if ok {
+			return begin, end
+		}
+		// case clauses are terminated by the next caseclause or the end
+		// of the enclosing switch body, we need the parent for either
+		body := cur.Parent()
+		endtok := token.NoPos
+		lastchild, ok := body.LastChild()
+		if !ok {
+			panic("???")
+		}
+		if lastchild == cur {
+			endtok = body.Node().End()
+		} else {
+			// get the next caseclause in this switch, it is our end token
+			k, i := cur.ParentEdge()
+			endtok = body.ChildAt(k, i+1).Node().Pos()
+		}
+		begin, end, ok = commentBetweenList(n.Colon, n.List, endtok, cmt)
+		if !ok {
+			panic("did not find comment")
+		}
+		return begin, end
+
+	case *ast.File:
+		if cmt.End() < n.Name.Pos() {
+			return n.Package, n.Name.Pos()
+		}
+		begin, end, ok := commentBetweenList(n.Name.Pos(), n.Decls, n.FileEnd, cmt)
+		if ok {
+			return begin, end
+		}
+		panic("did not find stmt")
+	case *ast.FuncDecl:
+		nextTok := n.Name.Pos()
+		if n.Recv != nil {
+			nextTok = n.Recv.Pos()
+		}
+		// only place before the receiver list is the func keywor
+		if cmt.End() < nextTok {
+			return n.Type.Func, nextTok
+		}
+	case *ast.IfStmt:
+
+	}
+	log.Panicf("unhandled node %T, %s", cur.Node(), line(cmt))
+	panic("unreachable")
+}
+
+func commentBetweenList[L ~[]N, N ast.Node](begin token.Pos, nodeList L, end token.Pos, cmt *ast.CommentGroup) (token.Pos, token.Pos, bool) {
+	if begin.IsValid() && end.IsValid() && len(nodeList) == 0 {
+		if cmt.End() < begin || end < cmt.Pos() {
+			panic("bad call")
+		}
+		return begin, end, true
+	}
+	if begin.IsValid() && len(nodeList) > 0 && cmt.End() < nodeList[0].Pos() {
+		return begin, nodeList[0].Pos(), true
+	}
+	for i := 1; i < len(nodeList); i++ {
+		pn := nodeList[i-1]
+		nn := nodeList[i]
+		if pn.End() < cmt.Pos() && cmt.End() < nn.Pos() {
+			return pn.End(), nn.Pos(), true
+		}
+	}
+	if cmt.End() < end {
+		return nodeList[len(nodeList)-1].End(), end, true
+	}
+	return token.NoPos, token.NoPos, false
+}
+
 func commentKind(ek edge.Kind, _ int) bool {
 	// TODO(dmo): line comments??
 	switch ek {
@@ -177,16 +297,18 @@ const (
 )
 
 type commentRange struct {
-	comment  *ast.CommentGroup
-	prev     inspector.Cursor
-	next     inspector.Cursor
-	position LinePosition
+	comment    *ast.CommentGroup
+	prevCursor inspector.Cursor
+	nextCursor inspector.Cursor
+	prevToken  token.Pos
+	nextToken  token.Pos
+	position   LinePosition
 }
 
 func (r *commentRange) String() string {
 	var b strings.Builder
 	fmt.Fprintln(&b, line(r.comment))
-	prev := r.prev.Node()
+	prev := r.prevCursor.Node()
 	posStr := ""
 	if r.position == LinePrevious {
 		posStr = " <Comment>"
@@ -204,14 +326,14 @@ func (r *commentRange) String() string {
 	if r.position == LineNext {
 		posStr = "<Comment> "
 	}
-	next := r.next.Node()
+	next := r.nextCursor.Node()
 	fmt.Fprintf(&b, "\t%snext %T %s", posStr, next, line(next))
 	return b.String()
 }
 
 func (r *commentRange) adjust() {
-	left := r.prev
-	right := r.next
+	left := r.prevCursor
+	right := r.nextCursor
 	cmt := r.comment
 	parent := left.Parent()
 
@@ -223,8 +345,8 @@ func (r *commentRange) adjust() {
 		// we have a comment inside the call parens
 		lparen := call.Lparen
 		if lparen < cmt.Pos() {
-			r.prev = right
-			r.next = right
+			r.prevCursor = right
+			r.nextCursor = right
 		}
 	}
 	if parent != right.Parent() {
@@ -250,15 +372,15 @@ func (r *commentRange) adjust() {
 	}
 	if tok != token.NoPos {
 		if r.comment.Pos() < tok {
-			r.next = parent
+			r.nextCursor = parent
 		} else {
-			r.prev = parent
+			r.prevCursor = parent
 		}
 		return
 	}
 	// Keyword "func" between doc and the rest of the decl
 	if lp == edge.FuncDecl_Doc {
-		r.prev = parent
+		r.prevCursor = parent
 		return
 	}
 
@@ -287,25 +409,25 @@ func (r *commentRange) adjust() {
 	case edge.CaseClause_List, edge.FieldList_List:
 		// the comma comes after the comment, unless there is a newline
 		// between the 2 cases.
-		pLine := fset.Position(r.prev.Node().End()).Line
-		nLine := fset.Position(r.next.Node().Pos()).Line
+		pLine := fset.Position(r.prevCursor.Node().End()).Line
+		nLine := fset.Position(r.nextCursor.Node().Pos()).Line
 		if pLine == nLine {
-			r.next = r.next.Parent()
+			r.nextCursor = r.nextCursor.Parent()
 		} else {
-			r.prev = r.prev.Parent()
+			r.prevCursor = r.prevCursor.Parent()
 		}
 		return
 	case edge.SelectorExpr_X:
 		// the dot always comes before the comment
-		r.prev = r.prev.Parent()
+		r.prevCursor = r.prevCursor.Parent()
 		return
 	}
 	panic(fmt.Sprintf("unhandled adjust %T[%s,%s] %s", parent.Node(), lp, rp, line(cmt)))
 }
 
 func (r *commentRange) adjustLine() {
-	prev := r.prev.Node()
-	next := r.next.Node()
+	prev := r.prevCursor.Node()
+	next := r.nextCursor.Node()
 
 	cLine := fset.Position(r.comment.Pos()).Line
 	nLine := fset.Position(next.Pos()).Line
