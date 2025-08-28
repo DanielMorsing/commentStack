@@ -465,18 +465,6 @@ func caseClause(node ast.Node, cmt *ast.CommentGroup, cur inspector.Cursor) (tok
 	panic("did not find comment")
 }
 
-type nodeToken token.Pos
-
-func (n nodeToken) Pos() token.Pos { return token.Pos(n) }
-func (n nodeToken) End() token.Pos { return token.Pos(n + 1) }
-
-func commentBetween(cmt *ast.CommentGroup, begin, end ast.Node) (token.Pos, token.Pos, bool) {
-	if begin.End() < cmt.Pos() && cmt.End() < end.Pos() {
-		return begin.End(), end.Pos(), true
-	}
-	return token.NoPos, token.NoPos, false
-}
-
 func nod(node ast.Node) []ast.Node {
 	// This is so that we can pass concrete values
 	// through but they can still be ignored, e.g. Field.Tag
@@ -485,6 +473,11 @@ func nod(node ast.Node) []ast.Node {
 	}
 	return []ast.Node{node}
 }
+
+type nodeToken token.Pos
+
+func (n nodeToken) Pos() token.Pos { return token.Pos(n) }
+func (n nodeToken) End() token.Pos { return token.Pos(n + 1) }
 
 func tok(p token.Pos) []ast.Node {
 	if !p.IsValid() {
