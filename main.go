@@ -61,8 +61,8 @@ func main() {
 		// and one cursor for the node that will introduce a token after the comment
 		for i, cmt := range file.Comments {
 			outer, _ := root.FindByPos(cmt.Pos(), cmt.End())
-			for commentKind(outer.ParentEdge()) {
-				outer = outer.Parent()
+			if commentKind(outer.ParentEdge()) {
+				outer = outer.Parent().Parent()
 			}
 			if file == outer.Node() && cmt.Pos() < file.Package {
 				// comments before the package keyword live in a special space between the
@@ -226,30 +226,13 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		}
 		return n.Ellipsis, n.Rparen
 	case *ast.CaseClause:
-		begin, end, ok := commentBetweenList(nt(n.Case), n.List, nt(n.Colon), cmt)
-		if ok {
-			return begin, end
-		}
-		// case clauses are terminated by the next caseclause or the end
-		// of the enclosing switch body, we need the parent for either
-		body := cur.Parent()
-		endtok := token.NoPos
-		lastchild, ok := body.LastChild()
-		if !ok {
-			panic("???")
-		}
-		if lastchild == cur {
-			endtok = body.Node().End()
-		} else {
-			// get the next caseclause in this switch, it is our end token
-			k, i := cur.ParentEdge()
-			endtok = body.ChildAt(k, i+1).Node().Pos()
-		}
-		begin, end, ok = commentBetweenList(nt(n.Colon), n.Body, nt(endtok), cmt)
-		if !ok {
-			panic("did not find comment")
-		}
-		return begin, end
+		return caseClause(n, cmt, cur)
+	case *ast.CommClause:
+		return caseClause(n, cmt, cur)
+	case *ast.Comment:
+		panic("found comment")
+	case *ast.CommentGroup:
+		panic("found comment")
 
 	case *ast.ChanType:
 		begintok := n.Begin
@@ -274,6 +257,31 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if ok {
 			return begin, end
 		}
+	case *ast.DeferStmt:
+		// TODO(dmo): can this just be removed, there's no other place for the comment to be
+		begin, end, ok := commentBetween(nt(n.Defer), n.Call, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.Ellipsis:
+		// TODO(dmo): can this just be removed, there's no other place for the comment to be
+		begin, end, ok := commentBetween(nt(n.Ellipsis), n.Elt, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.Field:
+		begin, end, ok := commentBetweenList(nt(token.NoPos), n.Names, n.Type, cmt)
+		if ok {
+			return begin, end
+		}
+		if n.Tag != nil {
+			begin, end, ok := commentBetween(n.Type, n.Tag, cmt)
+			if ok {
+				return begin, end
+			}
+		}
+		// TODO(dmo): figure out line comments
+		panic("unhandled line comment")
 	case *ast.FieldList:
 		begin, end, ok := commentBetweenList(nt(n.Opening), n.List, nt(n.Closing), cmt)
 		if ok {
@@ -288,14 +296,42 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 			return begin, end
 		}
 		panic("did not find stmt")
-	case *ast.FuncDecl:
-		nextTok := n.Name.Pos()
-		if n.Recv != nil {
-			nextTok = n.Recv.Pos()
+	case *ast.ForStmt:
+		var list []ast.Node
+		if n.Init != nil {
+			list = append(list, n.Init)
 		}
-		// only place before the receiver list is the func keywor
-		if cmt.End() < nextTok {
-			return n.Type.Func, nextTok
+		if n.Cond != nil {
+			list = append(list, n.Cond)
+		}
+		if n.Post != nil {
+			list = append(list, n.Post)
+		}
+		begin, end, ok := commentBetweenList(nt(n.For), list, n.Body, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.FuncDecl:
+		// n.Type covers the entire signature, can we ever get here?
+		panic("questions")
+	case *ast.FuncLit:
+		// only one spot the comment can be in
+		begin, end, ok := commentBetween(n.Type, n.Body, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.FuncType:
+		var list []ast.Node
+		if n.TypeParams != nil {
+			list = append(list, n.TypeParams)
+		}
+		list = append(list, n.Params)
+		if n.Results != nil {
+			list = append(list, n.Results)
+		}
+		begin, end, ok := commentBetweenList(nt(n.Func), list, nt(token.NoPos), cmt)
+		if ok {
+			return begin, end
 		}
 	case *ast.GenDecl:
 		begintok := n.TokPos
@@ -307,6 +343,12 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 			}
 		}
 		begin, end, ok := commentBetweenList(nt(begintok), n.Specs, nt(n.Rparen), cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.GoStmt:
+		// only one spot the comment can be in
+		begin, end, ok := commentBetween(nt(n.Go), n.Call, cmt)
 		if ok {
 			return begin, end
 		}
@@ -333,6 +375,42 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 			return begin, end
 		}
 		panic("did not find comment in if stmt")
+	case *ast.ImportSpec:
+		panic("what to do with endpos?")
+	case *ast.IncDecStmt:
+		// only one spot the comment can be in
+		begin, end, ok := commentBetween(n.X, nt(n.TokPos), cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.IndexExpr:
+		begin, end, ok := commentBetween(n.X, nt(n.Lbrack), cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetween(nt(n.Lbrack), n.Index, cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetween(n.Index, nt(n.Rbrack), cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.IndexListExpr:
+		begin, end, ok := commentBetween(n.X, nt(n.Lbrack), cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetweenList(nt(n.Lbrack), n.Indices, nt(n.Rbrack), cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.InterfaceType:
+		// only one spot
+		begin, end, ok := commentBetween(nt(n.Interface), n.Methods, cmt)
+		if ok {
+			return begin, end
+		}
 	case *ast.KeyValueExpr:
 		begin, end, ok := commentBetween(n.Key, nt(n.Colon), cmt)
 		if ok {
@@ -342,9 +420,214 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if ok {
 			return begin, end
 		}
+	case *ast.LabeledStmt:
+		begin, end, ok := commentBetween(n.Label, nt(n.Colon), cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetween(nt(n.Colon), n.Stmt, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.MapType:
+		// Another type where we don't have perfect position info
+		begin, end, ok := commentBetween(nt(n.Map), n.Key, cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetween(n.Key, n.Value, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.ParenExpr:
+		begin, end, ok := commentBetween(nt(n.Lparen), n.X, cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetween(n.X, nt(n.Rparen), cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.RangeStmt:
+		var list []ast.Node
+		if n.Key != nil {
+			list = append(list, n.Key)
+		}
+		if n.Value != nil {
+			list = append(list, n.Value)
+		}
+		if n.TokPos.IsValid() {
+			list = append(list, nt(n.TokPos))
+		}
+		list = append(list, nt(n.Range))
+		list = append(list, n.X)
+		begin, end, ok := commentBetweenList(nt(n.For), list, n.Body, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.ReturnStmt:
+		begin, end, ok := commentBetweenList(nt(n.Return), n.Results, nt(token.NoPos), cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.SelectStmt:
+		begin, end, ok := commentBetween(nt(n.Select), n.Body, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.SelectorExpr:
+		// do not have complete info here
+		begin, end, ok := commentBetween(n.X, n.Sel, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.SendStmt:
+		begin, end, ok := commentBetween(n.Chan, nt(n.Arrow), cmt)
+		if ok {
+			return begin, end
+		}
+		begin, end, ok = commentBetween(nt(n.Arrow), n.Value, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.SliceExpr:
+		begin, end, ok := commentBetween(n.X, nt(n.Lbrack), cmt)
+		if ok {
+			return begin, end
+		}
+		var list []ast.Node
+		if n.Low != nil {
+			list = append(list, n.Low)
+		}
+		if n.High != nil {
+			list = append(list, n.High)
+		}
+		if n.Max != nil {
+			list = append(list, n.Max)
+		}
+		begin, end, ok = commentBetweenList(nt(n.Lbrack), list, nt(n.Rbrack), cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.StarExpr:
+		// only one spot in this expression we can be
+		begin, end, ok := commentBetween(nt(n.Star), n.X, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.StructType:
+		// only one spot in this grammar we can be
+		begin, end, ok := commentBetween(nt(n.Struct), n.Fields, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.SwitchStmt:
+		var list []ast.Node
+		if n.Init != nil {
+			list = append(list, n.Init)
+		}
+		if n.Tag != nil {
+			list = append(list, n.Tag)
+		}
+		begin, end, ok := commentBetweenList(nt(n.Switch), list, n.Body, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.TypeAssertExpr:
+		// incomplete position information, where is the dot?
+		begin, end, ok := commentBetween(n.X, nt(n.Lparen), cmt)
+		if ok {
+			return begin, end
+		}
+		startTok := ast.Node(nt(n.Lparen))
+		if n.Type != nil {
+			startTok = n.Type
+			begin, end, ok := commentBetween(nt(n.Lparen), n.Type, cmt)
+			if ok {
+				return begin, end
+			}
+		}
+		begin, end, ok = commentBetween(startTok, nt(n.Rparen), cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.TypeSpec:
+		var list []ast.Node
+		if n.TypeParams != nil {
+			list = append(list, n.TypeParams)
+		}
+		if n.Assign.IsValid() {
+			list = append(list, nt(n.Assign))
+		}
+		begin, end, ok := commentBetweenList(n.Name, list, n.Type, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.TypeSwitchStmt:
+		var list []ast.Node
+		if n.Init != nil {
+			list = append(list, n.Init)
+		}
+		begin, end, ok := commentBetweenList(nt(n.Switch), list, n.Body, cmt)
+		if ok {
+			return begin, end
+		}
+	case *ast.UnaryExpr:
+		// only one spot in this grammar we can be
+		begin, end, ok := commentBetween(nt(n.OpPos), n.X, cmt)
+		if ok {
+			return begin, end
+		}
 	}
 	log.Panicf("unhandled node %T, %s", cur.Node(), line(cmt))
 	panic("unreachable")
+}
+
+func caseClause(node ast.Node, cmt *ast.CommentGroup, cur inspector.Cursor) (token.Pos, token.Pos) {
+	var cas, colon token.Pos
+	var list []ast.Node
+	var body []ast.Stmt
+	switch n := node.(type) {
+	case *ast.CommClause:
+		list = []ast.Node{n.Comm}
+		cas = n.Case
+		colon = n.Colon
+		body = n.Body
+	case *ast.CaseClause:
+		list = make([]ast.Node, len(n.List))
+		for i, l := range n.List {
+			list[i] = l
+		}
+		cas = n.Case
+		colon = n.Colon
+		body = n.Body
+	default:
+		panic("unhandled case")
+	}
+	begin, end, ok := commentBetweenList(nt(cas), list, nt(colon), cmt)
+	if ok {
+		return begin, end
+	}
+	// case clauses are terminated by the next caseclause or the end
+	// of the enclosing switch body, we need the parent for either
+	switchBody := cur.Parent()
+	endtok := token.NoPos
+	lastchild, ok := switchBody.LastChild()
+	if !ok {
+		panic("???")
+	}
+	if lastchild == cur {
+		endtok = switchBody.Node().End()
+	} else {
+		// get the next caseclause in this switch, it is our end token
+		k, i := cur.ParentEdge()
+		endtok = switchBody.ChildAt(k, i+1).Node().Pos()
+	}
+	begin, end, ok = commentBetweenList(nt(colon), body, nt(endtok), cmt)
+	if !ok {
+		panic("did not find comment")
+	}
+	return begin, end
 }
 
 type nt token.Pos
@@ -383,11 +666,11 @@ func commentBetweenList[L ~[]N, N ast.Node](begin ast.Node, nodeList L, end ast.
 }
 
 func commentKind(ek edge.Kind, _ int) bool {
-	// TODO(dmo): line comments??
 	switch ek {
 	case edge.Field_Doc, edge.File_Doc, edge.FuncDecl_Doc,
 		edge.ValueSpec_Doc, edge.TypeSpec_Doc, edge.ImportSpec_Doc,
-		edge.GenDecl_Doc, edge.CommentGroup_List:
+		edge.GenDecl_Doc, edge.CommentGroup_List, edge.Field_Comment,
+		edge.ImportSpec_Comment, edge.ValueSpec_Comment, edge.TypeSpec_Comment:
 		return true
 	}
 	return false
