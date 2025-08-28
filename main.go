@@ -104,6 +104,7 @@ func main() {
 			switch n := parent.(type) {
 			case *ast.Field:
 				n.Doc = nil
+				n.Comment = nil
 			case *ast.File:
 				n.Doc = nil
 			case *ast.FuncDecl:
@@ -112,10 +113,13 @@ func main() {
 				n.Doc = nil
 			case *ast.ImportSpec:
 				n.Doc = nil
+				n.Comment = nil
 			case *ast.TypeSpec:
 				n.Doc = nil
+				n.Comment = nil
 			case *ast.ValueSpec:
 				n.Doc = nil
+				n.Comment = nil
 			}
 		}
 		for _, f := range files {
