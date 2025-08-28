@@ -62,11 +62,15 @@ func main() {
 		// and one cursor for the node that will introduce a token after the comment
 		for i, cmt := range file.Comments {
 			outer, _ := root.FindByPos(cmt.Pos(), cmt.End())
-			// Doc and Comment nodes are part of lists or
+			// Doc and Comment nodes occur either before a syntax
+			// or after (to the side of it). Walk up to make sure we get the bounding AST
 			if commentKind(outer.ParentEdge()) {
-				outer = outer.Parent().Parent()
+				outer = outer.Parent()
+				if outer.Node() != file {
+					outer = outer.Parent()
+				}
 			}
-			if file == outer.Node() && cmt.Pos() < file.Package {
+			if file == outer.Node() && cmt.End() < file.Package {
 				// comments before the package keyword live in a special space between the
 				// root cursor and the file
 				r := &commentRange{
