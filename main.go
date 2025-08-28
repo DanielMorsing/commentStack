@@ -201,9 +201,6 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		}
 		return n.OpPos, n.Y.Pos()
 	case *ast.BlockStmt:
-		if len(n.List) == 0 {
-			return n.Lbrace, n.Rbrace
-		}
 		begin, end, ok := commentBetweenList(nt(n.Lbrace), n.List, nt(n.Rbrace), cmt)
 		if ok {
 			return begin, end
@@ -212,14 +209,15 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 	case *ast.BranchStmt:
 		return n.TokPos, n.Label.Pos()
 	case *ast.CallExpr:
-		if cmt.End() < n.Lparen {
-			return n.Fun.End(), n.Lparen
+		begin, end, ok := commentBetween(n.Fun, nt(n.Lparen), cmt)
+		if ok {
+			return begin, end
 		}
 		endtok := n.Rparen
 		if n.Ellipsis != token.NoPos {
 			endtok = n.Ellipsis
 		}
-		begin, end, ok := commentBetweenList(nt(n.Lparen), n.Args, nt(endtok), cmt)
+		begin, end, ok = commentBetweenList(nt(n.Lparen), n.Args, nt(endtok), cmt)
 		if ok {
 			return begin, end
 		}

@@ -15,4 +15,9 @@ func x() {
 		a || b:
 		// because Something
 	}
+
+	foobar.v( /* jfkl */
+	)
+	foobar.v() // fjkls
+	foobar.v /*fjkl*/ ()
 }
