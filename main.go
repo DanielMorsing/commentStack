@@ -185,11 +185,11 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		}
 		return n.Len.Pos(), n.Elt.Pos()
 	case *ast.AssignStmt:
-		begin, end, ok := commentBetweenList(nt(token.NoPos), n.Lhs, nt(n.TokPos), cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(token.NoPos), n.Lhs, nt(n.TokPos))
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetweenList(nt(n.TokPos), n.Rhs, nt(token.NoPos), cmt)
+		begin, end, ok = commentBetweenList(cmt, nt(n.TokPos), n.Rhs, nt(token.NoPos))
 		if ok {
 			return begin, end
 		}
@@ -204,7 +204,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		}
 		return n.OpPos, n.Y.Pos()
 	case *ast.BlockStmt:
-		begin, end, ok := commentBetweenList(nt(n.Lbrace), n.List, nt(n.Rbrace), cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(n.Lbrace), n.List, nt(n.Rbrace))
 		if ok {
 			return begin, end
 		}
@@ -212,7 +212,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 	case *ast.BranchStmt:
 		return n.TokPos, n.Label.Pos()
 	case *ast.CallExpr:
-		begin, end, ok := commentBetween(n.Fun, nt(n.Lparen), cmt)
+		begin, end, ok := commentBetween(cmt, n.Fun, nt(n.Lparen))
 		if ok {
 			return begin, end
 		}
@@ -220,7 +220,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if n.Ellipsis != token.NoPos {
 			endtok = n.Ellipsis
 		}
-		begin, end, ok = commentBetweenList(nt(n.Lparen), n.Args, nt(endtok), cmt)
+		begin, end, ok = commentBetweenList(cmt, nt(n.Lparen), n.Args, nt(endtok))
 		if ok {
 			return begin, end
 		}
@@ -238,44 +238,44 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		begintok := n.Begin
 		if n.Arrow != token.NoPos {
 			begintok = n.Arrow
-			begin, end, ok := commentBetween(nt(n.Begin), nt(n.Arrow), cmt)
+			begin, end, ok := commentBetween(cmt, nt(n.Begin), nt(n.Arrow))
 			if ok {
 				return begin, end
 			}
 		}
-		begin, end, ok := commentBetween(nt(begintok), n.Value, cmt)
+		begin, end, ok := commentBetween(cmt, nt(begintok), n.Value)
 		if ok {
 			return begin, end
 		}
 
 	case *ast.CompositeLit:
-		begin, end, ok := commentBetween(n.Type, nt(n.Lbrace), cmt)
+		begin, end, ok := commentBetween(cmt, n.Type, nt(n.Lbrace))
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetweenList(nt(n.Lbrace), n.Elts, nt(n.Rbrace), cmt)
+		begin, end, ok = commentBetweenList(cmt, nt(n.Lbrace), n.Elts, nt(n.Rbrace))
 		if ok {
 			return begin, end
 		}
 	case *ast.DeferStmt:
 		// TODO(dmo): can this just be removed, there's no other place for the comment to be
-		begin, end, ok := commentBetween(nt(n.Defer), n.Call, cmt)
+		begin, end, ok := commentBetween(cmt, nt(n.Defer), n.Call)
 		if ok {
 			return begin, end
 		}
 	case *ast.Ellipsis:
 		// TODO(dmo): can this just be removed, there's no other place for the comment to be
-		begin, end, ok := commentBetween(nt(n.Ellipsis), n.Elt, cmt)
+		begin, end, ok := commentBetween(cmt, nt(n.Ellipsis), n.Elt)
 		if ok {
 			return begin, end
 		}
 	case *ast.Field:
-		begin, end, ok := commentBetweenList(nt(token.NoPos), n.Names, n.Type, cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(token.NoPos), n.Names, n.Type)
 		if ok {
 			return begin, end
 		}
 		if n.Tag != nil {
-			begin, end, ok := commentBetween(n.Type, n.Tag, cmt)
+			begin, end, ok := commentBetween(cmt, n.Type, n.Tag)
 			if ok {
 				return begin, end
 			}
@@ -283,7 +283,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		// TODO(dmo): figure out line comments
 		panic("unhandled line comment")
 	case *ast.FieldList:
-		begin, end, ok := commentBetweenList(nt(n.Opening), n.List, nt(n.Closing), cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(n.Opening), n.List, nt(n.Closing))
 		if ok {
 			return begin, end
 		}
@@ -291,7 +291,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if cmt.End() < n.Name.Pos() {
 			return n.Package, n.Name.Pos()
 		}
-		begin, end, ok := commentBetweenList(n.Name, n.Decls, nt(n.FileEnd), cmt)
+		begin, end, ok := commentBetweenList(cmt, n.Name, n.Decls, nt(n.FileEnd))
 		if ok {
 			return begin, end
 		}
@@ -307,7 +307,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if n.Post != nil {
 			list = append(list, n.Post)
 		}
-		begin, end, ok := commentBetweenList(nt(n.For), list, n.Body, cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(n.For), list, n.Body)
 		if ok {
 			return begin, end
 		}
@@ -316,7 +316,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		panic("questions")
 	case *ast.FuncLit:
 		// only one spot the comment can be in
-		begin, end, ok := commentBetween(n.Type, n.Body, cmt)
+		begin, end, ok := commentBetween(cmt, n.Type, n.Body)
 		if ok {
 			return begin, end
 		}
@@ -329,7 +329,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if n.Results != nil {
 			list = append(list, n.Results)
 		}
-		begin, end, ok := commentBetweenList(nt(n.Func), list, nt(token.NoPos), cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(n.Func), list, nt(token.NoPos))
 		if ok {
 			return begin, end
 		}
@@ -337,18 +337,18 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		begintok := n.TokPos
 		if n.Lparen != token.NoPos {
 			begintok = n.Lparen
-			begin, end, ok := commentBetween(nt(n.TokPos), nt(n.Lparen), cmt)
+			begin, end, ok := commentBetween(cmt, nt(n.TokPos), nt(n.Lparen))
 			if ok {
 				return begin, end
 			}
 		}
-		begin, end, ok := commentBetweenList(nt(begintok), n.Specs, nt(n.Rparen), cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(begintok), n.Specs, nt(n.Rparen))
 		if ok {
 			return begin, end
 		}
 	case *ast.GoStmt:
 		// only one spot the comment can be in
-		begin, end, ok := commentBetween(nt(n.Go), n.Call, cmt)
+		begin, end, ok := commentBetween(cmt, nt(n.Go), n.Call)
 		if ok {
 			return begin, end
 		}
@@ -357,20 +357,20 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		beginNode := ast.Node(nt(n.If))
 		if n.Init != nil {
 			beginNode = n.Init
-			begin, end, ok := commentBetween(nt(n.If), n.Init, cmt)
+			begin, end, ok := commentBetween(cmt, nt(n.If), n.Init)
 			if ok {
 				return begin, end
 			}
 		}
-		begin, end, ok := commentBetween(beginNode, n.Cond, cmt)
+		begin, end, ok := commentBetween(cmt, beginNode, n.Cond)
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetween(n.Cond, n.Body, cmt)
+		begin, end, ok = commentBetween(cmt, n.Cond, n.Body)
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetween(n.Body, n.Else, cmt)
+		begin, end, ok = commentBetween(cmt, n.Body, n.Else)
 		if ok {
 			return begin, end
 		}
@@ -379,72 +379,72 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		panic("what to do with endpos?")
 	case *ast.IncDecStmt:
 		// only one spot the comment can be in
-		begin, end, ok := commentBetween(n.X, nt(n.TokPos), cmt)
+		begin, end, ok := commentBetween(cmt, n.X, nt(n.TokPos))
 		if ok {
 			return begin, end
 		}
 	case *ast.IndexExpr:
-		begin, end, ok := commentBetween(n.X, nt(n.Lbrack), cmt)
+		begin, end, ok := commentBetween(cmt, n.X, nt(n.Lbrack))
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetween(nt(n.Lbrack), n.Index, cmt)
+		begin, end, ok = commentBetween(cmt, nt(n.Lbrack), n.Index)
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetween(n.Index, nt(n.Rbrack), cmt)
+		begin, end, ok = commentBetween(cmt, n.Index, nt(n.Rbrack))
 		if ok {
 			return begin, end
 		}
 	case *ast.IndexListExpr:
-		begin, end, ok := commentBetween(n.X, nt(n.Lbrack), cmt)
+		begin, end, ok := commentBetween(cmt, n.X, nt(n.Lbrack))
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetweenList(nt(n.Lbrack), n.Indices, nt(n.Rbrack), cmt)
+		begin, end, ok = commentBetweenList(cmt, nt(n.Lbrack), n.Indices, nt(n.Rbrack))
 		if ok {
 			return begin, end
 		}
 	case *ast.InterfaceType:
 		// only one spot
-		begin, end, ok := commentBetween(nt(n.Interface), n.Methods, cmt)
+		begin, end, ok := commentBetween(cmt, nt(n.Interface), n.Methods)
 		if ok {
 			return begin, end
 		}
 	case *ast.KeyValueExpr:
-		begin, end, ok := commentBetween(n.Key, nt(n.Colon), cmt)
+		begin, end, ok := commentBetween(cmt, n.Key, nt(n.Colon))
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetween(nt(n.Colon), n.Value, cmt)
+		begin, end, ok = commentBetween(cmt, nt(n.Colon), n.Value)
 		if ok {
 			return begin, end
 		}
 	case *ast.LabeledStmt:
-		begin, end, ok := commentBetween(n.Label, nt(n.Colon), cmt)
+		begin, end, ok := commentBetween(cmt, n.Label, nt(n.Colon))
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetween(nt(n.Colon), n.Stmt, cmt)
+		begin, end, ok = commentBetween(cmt, nt(n.Colon), n.Stmt)
 		if ok {
 			return begin, end
 		}
 	case *ast.MapType:
 		// Another type where we don't have perfect position info
-		begin, end, ok := commentBetween(nt(n.Map), n.Key, cmt)
+		begin, end, ok := commentBetween(cmt, nt(n.Map), n.Key)
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetween(n.Key, n.Value, cmt)
+		begin, end, ok = commentBetween(cmt, n.Key, n.Value)
 		if ok {
 			return begin, end
 		}
 	case *ast.ParenExpr:
-		begin, end, ok := commentBetween(nt(n.Lparen), n.X, cmt)
+		begin, end, ok := commentBetween(cmt, nt(n.Lparen), n.X)
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetween(n.X, nt(n.Rparen), cmt)
+		begin, end, ok = commentBetween(cmt, n.X, nt(n.Rparen))
 		if ok {
 			return begin, end
 		}
@@ -461,37 +461,37 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		}
 		list = append(list, nt(n.Range))
 		list = append(list, n.X)
-		begin, end, ok := commentBetweenList(nt(n.For), list, n.Body, cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(n.For), list, n.Body)
 		if ok {
 			return begin, end
 		}
 	case *ast.ReturnStmt:
-		begin, end, ok := commentBetweenList(nt(n.Return), n.Results, nt(token.NoPos), cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(n.Return), n.Results, nt(token.NoPos))
 		if ok {
 			return begin, end
 		}
 	case *ast.SelectStmt:
-		begin, end, ok := commentBetween(nt(n.Select), n.Body, cmt)
+		begin, end, ok := commentBetween(cmt, nt(n.Select), n.Body)
 		if ok {
 			return begin, end
 		}
 	case *ast.SelectorExpr:
 		// do not have complete info here
-		begin, end, ok := commentBetween(n.X, n.Sel, cmt)
+		begin, end, ok := commentBetween(cmt, n.X, n.Sel)
 		if ok {
 			return begin, end
 		}
 	case *ast.SendStmt:
-		begin, end, ok := commentBetween(n.Chan, nt(n.Arrow), cmt)
+		begin, end, ok := commentBetween(cmt, n.Chan, nt(n.Arrow))
 		if ok {
 			return begin, end
 		}
-		begin, end, ok = commentBetween(nt(n.Arrow), n.Value, cmt)
+		begin, end, ok = commentBetween(cmt, nt(n.Arrow), n.Value)
 		if ok {
 			return begin, end
 		}
 	case *ast.SliceExpr:
-		begin, end, ok := commentBetween(n.X, nt(n.Lbrack), cmt)
+		begin, end, ok := commentBetween(cmt, n.X, nt(n.Lbrack))
 		if ok {
 			return begin, end
 		}
@@ -505,19 +505,19 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if n.Max != nil {
 			list = append(list, n.Max)
 		}
-		begin, end, ok = commentBetweenList(nt(n.Lbrack), list, nt(n.Rbrack), cmt)
+		begin, end, ok = commentBetweenList(cmt, nt(n.Lbrack), list, nt(n.Rbrack))
 		if ok {
 			return begin, end
 		}
 	case *ast.StarExpr:
 		// only one spot in this expression we can be
-		begin, end, ok := commentBetween(nt(n.Star), n.X, cmt)
+		begin, end, ok := commentBetween(cmt, nt(n.Star), n.X)
 		if ok {
 			return begin, end
 		}
 	case *ast.StructType:
 		// only one spot in this grammar we can be
-		begin, end, ok := commentBetween(nt(n.Struct), n.Fields, cmt)
+		begin, end, ok := commentBetween(cmt, nt(n.Struct), n.Fields)
 		if ok {
 			return begin, end
 		}
@@ -529,25 +529,25 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if n.Tag != nil {
 			list = append(list, n.Tag)
 		}
-		begin, end, ok := commentBetweenList(nt(n.Switch), list, n.Body, cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(n.Switch), list, n.Body)
 		if ok {
 			return begin, end
 		}
 	case *ast.TypeAssertExpr:
 		// incomplete position information, where is the dot?
-		begin, end, ok := commentBetween(n.X, nt(n.Lparen), cmt)
+		begin, end, ok := commentBetween(cmt, n.X, nt(n.Lparen))
 		if ok {
 			return begin, end
 		}
 		startTok := ast.Node(nt(n.Lparen))
 		if n.Type != nil {
 			startTok = n.Type
-			begin, end, ok := commentBetween(nt(n.Lparen), n.Type, cmt)
+			begin, end, ok := commentBetween(cmt, nt(n.Lparen), n.Type)
 			if ok {
 				return begin, end
 			}
 		}
-		begin, end, ok = commentBetween(startTok, nt(n.Rparen), cmt)
+		begin, end, ok = commentBetween(cmt, startTok, nt(n.Rparen))
 		if ok {
 			return begin, end
 		}
@@ -559,7 +559,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if n.Assign.IsValid() {
 			list = append(list, nt(n.Assign))
 		}
-		begin, end, ok := commentBetweenList(n.Name, list, n.Type, cmt)
+		begin, end, ok := commentBetweenList(cmt, n.Name, list, n.Type)
 		if ok {
 			return begin, end
 		}
@@ -568,13 +568,13 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		if n.Init != nil {
 			list = append(list, n.Init)
 		}
-		begin, end, ok := commentBetweenList(nt(n.Switch), list, n.Body, cmt)
+		begin, end, ok := commentBetweenList(cmt, nt(n.Switch), list, n.Body)
 		if ok {
 			return begin, end
 		}
 	case *ast.UnaryExpr:
 		// only one spot in this grammar we can be
-		begin, end, ok := commentBetween(nt(n.OpPos), n.X, cmt)
+		begin, end, ok := commentBetween(cmt, nt(n.OpPos), n.X)
 		if ok {
 			return begin, end
 		}
@@ -604,7 +604,7 @@ func caseClause(node ast.Node, cmt *ast.CommentGroup, cur inspector.Cursor) (tok
 	default:
 		panic("unhandled case")
 	}
-	begin, end, ok := commentBetweenList(nt(cas), list, nt(colon), cmt)
+	begin, end, ok := commentBetweenList(cmt, nt(cas), list, nt(colon))
 	if ok {
 		return begin, end
 	}
@@ -623,7 +623,7 @@ func caseClause(node ast.Node, cmt *ast.CommentGroup, cur inspector.Cursor) (tok
 		k, i := cur.ParentEdge()
 		endtok = switchBody.ChildAt(k, i+1).Node().Pos()
 	}
-	begin, end, ok = commentBetweenList(nt(colon), body, nt(endtok), cmt)
+	begin, end, ok = commentBetweenList(cmt, nt(colon), body, nt(endtok))
 	if !ok {
 		panic("did not find comment")
 	}
@@ -635,14 +635,14 @@ type nt token.Pos
 func (n nt) Pos() token.Pos { return token.Pos(n) }
 func (n nt) End() token.Pos { return token.Pos(n + 1) }
 
-func commentBetween(begin ast.Node, end ast.Node, cmt *ast.CommentGroup) (token.Pos, token.Pos, bool) {
+func commentBetween(cmt *ast.CommentGroup, begin, end ast.Node) (token.Pos, token.Pos, bool) {
 	if begin.End() < cmt.Pos() && cmt.End() < end.Pos() {
 		return begin.End(), end.Pos(), true
 	}
 	return token.NoPos, token.NoPos, false
 }
 
-func commentBetweenList[L ~[]N, N ast.Node](begin ast.Node, nodeList L, end ast.Node, cmt *ast.CommentGroup) (token.Pos, token.Pos, bool) {
+func commentBetweenList[L ~[]N, N ast.Node](cmt *ast.CommentGroup, begin ast.Node, nodeList L, end ast.Node) (token.Pos, token.Pos, bool) {
 	if begin.End().IsValid() && end.Pos().IsValid() && len(nodeList) == 0 {
 		if cmt.End() < begin.End() || end.Pos() < cmt.Pos() {
 			panic("bad call")
