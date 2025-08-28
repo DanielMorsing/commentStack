@@ -62,6 +62,7 @@ func main() {
 		// and one cursor for the node that will introduce a token after the comment
 		for i, cmt := range file.Comments {
 			outer, _ := root.FindByPos(cmt.Pos(), cmt.End())
+			// Doc and Comment nodes are part of lists or
 			if commentKind(outer.ParentEdge()) {
 				outer = outer.Parent().Parent()
 			}
@@ -175,40 +176,24 @@ func findLimits(cmt *ast.CommentGroup, outer inspector.Cursor) *commentRange {
 // getTokens returns the specific tokens that bound the comment. Where astutil.PathEnclosingInterval
 // and cursor.FindByPos finds the one Node that entirely encloses a position (and hence comment),
 // gettoken can return tokens that belong to different AST nodes.
+//
+// TODO(dmo): could this be done with reflect and carve-outs
 func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Pos) {
 	switch n := cur.Node().(type) {
 	case *ast.ArrayType:
-		begin, end, ok := findComment(cmt, tok(n.Lbrack), nod(n.Len), nod(n.Elt))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Lbrack), nod(n.Len), nod(n.Elt))
 	case *ast.AssignStmt:
-		begin, end, ok := findComment(cmt, list(n.Lhs), tok(n.TokPos), list(n.Rhs))
-		if ok {
-			return begin, end
-		}
-		panic("did not find comment in assign stmt")
+		return findComment(cmt, list(n.Lhs), tok(n.TokPos), list(n.Rhs))
 	case *ast.BasicLit:
 		panic("comments cannot occur in literals")
 	case *ast.BinaryExpr:
-		begin, end, ok := findComment(cmt, nod(n.X), tok(n.OpPos), nod(n.Y))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.X), tok(n.OpPos), nod(n.Y))
 	case *ast.BlockStmt:
-		begin, end, ok := findComment(cmt, tok(n.Lbrace), list(n.List), tok(n.Rbrace))
-		if ok {
-			return begin, end
-		}
-		panic("did not find stmt")
+		return findComment(cmt, tok(n.Lbrace), list(n.List), tok(n.Rbrace))
 	case *ast.BranchStmt:
-		return n.TokPos, n.Label.Pos()
+		return findComment(cmt, tok(n.TokPos), nod(n.Label))
 	case *ast.CallExpr:
-		begin, end, ok := findComment(cmt, nod(n.Fun), tok(n.Lparen), list(n.Args), tok(n.Ellipsis), tok(n.Rparen))
-		if ok {
-			return begin, end
-		}
-
+		return findComment(cmt, nod(n.Fun), tok(n.Lparen), list(n.Args), tok(n.Ellipsis), tok(n.Rparen))
 	case *ast.CaseClause:
 		return caseClause(n, cmt, cur)
 	case *ast.CommClause:
@@ -219,203 +204,92 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 		panic("found comment")
 
 	case *ast.ChanType:
-		begin, end, ok := findComment(cmt, tok(n.Begin), tok(n.Arrow), nod(n.Value))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Begin), tok(n.Arrow), nod(n.Value))
 
 	case *ast.CompositeLit:
-		begin, end, ok := findComment(cmt, nod(n.Type), tok(n.Lbrace), list(n.Elts), tok(n.Rbrace))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.Type), tok(n.Lbrace), list(n.Elts), tok(n.Rbrace))
 	case *ast.DeferStmt:
 		// TODO(dmo): can this just be removed, there's no other place for the comment to be
-		begin, end, ok := findComment(cmt, tok(n.Defer), nod(n.Call))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Defer), nod(n.Call))
 	case *ast.Ellipsis:
 		// TODO(dmo): can this just be removed, there's no other place for the comment to be
-		begin, end, ok := findComment(cmt, tok(n.Ellipsis), nod(n.Elt))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Ellipsis), nod(n.Elt))
 	case *ast.Field:
-		begin, end, ok := findComment(cmt, list(n.Names), nod(n.Type), nod(n.Tag))
-		if ok {
-			return begin, end
-		}
-		// TODO(dmo): figure out line comments
-		panic("unhandled line comment")
+		return findComment(cmt, list(n.Names), nod(n.Type), nod(n.Tag))
 	case *ast.FieldList:
-		begin, end, ok := findComment(cmt, tok(n.Opening), list(n.List), tok(n.Closing))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Opening), list(n.List), tok(n.Closing))
 	case *ast.File:
-		begin, end, ok := findComment(cmt, tok(n.Package), nod(n.Name), list(n.Decls), tok(n.FileEnd))
-		if ok {
-			return begin, end
-		}
-		panic("did not find stmt")
+		return findComment(cmt, tok(n.Package), nod(n.Name), list(n.Decls), tok(n.FileEnd))
 	case *ast.ForStmt:
-		begin, end, ok := findComment(cmt, tok(n.For), nod(n.Init), nod(n.Cond), nod(n.Post), nod(n.Body))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.For), nod(n.Init), nod(n.Cond), nod(n.Post), nod(n.Body))
 	case *ast.FuncDecl:
 		// the func token lives in the n.Type parameter, so inline all its fields into
 		// this one
-		begin, end, ok := findComment(cmt, tok(n.Type.Func), nod(n.Recv), nod(n.Name), nod(n.Type.Params), nod(n.Type.Results), nod(n.Body))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Type.Func), nod(n.Recv), nod(n.Name), nod(n.Type.Params), nod(n.Type.Results), nod(n.Body))
 	case *ast.FuncLit:
 		// only one spot the comment can be in
-		begin, end, ok := findComment(cmt, nod(n.Type), nod(n.Body))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.Type), nod(n.Body))
 	case *ast.FuncType:
-		begin, end, ok := findComment(cmt, tok(n.Func), nod(n.TypeParams), nod(n.Params), nod(n.Results))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Func), nod(n.TypeParams), nod(n.Params), nod(n.Results))
 	case *ast.GenDecl:
-		begin, end, ok := findComment(cmt, tok(n.TokPos), tok(n.Lparen), list(n.Specs), tok(n.Rparen))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.TokPos), tok(n.Lparen), list(n.Specs), tok(n.Rparen))
 	case *ast.GoStmt:
 		// only one spot the comment can be in
-		begin, end, ok := findComment(cmt, tok(n.Go), nod(n.Call))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Go), nod(n.Call))
 	case *ast.IfStmt:
-		begin, end, ok := findComment(cmt, tok(n.If), nod(n.Init), nod(n.Cond), nod(n.Body), nod(n.Else))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.If), nod(n.Init), nod(n.Cond), nod(n.Body), nod(n.Else))
 	case *ast.ImportSpec:
 		panic("what to do with endpos?")
 	case *ast.IncDecStmt:
 		// only one spot the comment can be in
-		begin, end, ok := findComment(cmt, nod(n.X), tok(n.TokPos))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.X), tok(n.TokPos))
 	case *ast.IndexExpr:
-		begin, end, ok := findComment(cmt, nod(n.X), tok(n.Lbrack), nod(n.Index), tok(n.Rbrack))
-		if ok {
-			return begin, end
-		}
-
+		return findComment(cmt, nod(n.X), tok(n.Lbrack), nod(n.Index), tok(n.Rbrack))
 	case *ast.IndexListExpr:
-		begin, end, ok := findComment(cmt, nod(n.X), tok(n.Lbrack), list(n.Indices), tok(n.Rbrack))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.X), tok(n.Lbrack), list(n.Indices), tok(n.Rbrack))
 	case *ast.InterfaceType:
-		// only one spot
-		begin, end, ok := findComment(cmt, tok(n.Interface), nod(n.Methods))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Interface), nod(n.Methods))
 	case *ast.KeyValueExpr:
-		begin, end, ok := findComment(cmt, nod(n.Key), tok(n.Colon), nod(n.Value))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.Key), tok(n.Colon), nod(n.Value))
 	case *ast.LabeledStmt:
-		begin, end, ok := findComment(cmt, nod(n.Label), tok(n.Colon), nod(n.Stmt))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.Label), tok(n.Colon), nod(n.Stmt))
 	case *ast.MapType:
 		// Another type where we don't have perfect position info
 		// there can be a comment between the brackets
-		begin, end, ok := findComment(cmt, tok(n.Map), nod(n.Key), nod(n.Value))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Map), nod(n.Key), nod(n.Value))
 	case *ast.ParenExpr:
-		begin, end, ok := findComment(cmt, tok(n.Lparen), nod(n.X), tok(n.Rparen))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Lparen), nod(n.X), tok(n.Rparen))
 	case *ast.RangeStmt:
-		begin, end, ok := findComment(cmt, tok(n.For), nod(n.Key), nod(n.Value), tok(n.TokPos), tok(n.Range), nod(n.X), nod(n.Body))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.For), nod(n.Key), nod(n.Value), tok(n.TokPos), tok(n.Range), nod(n.X), nod(n.Body))
 	case *ast.ReturnStmt:
-		begin, end, ok := findComment(cmt, tok(n.Return), list(n.Results))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Return), list(n.Results))
 	case *ast.SelectStmt:
-		begin, end, ok := findComment(cmt, tok(n.Select), nod(n.Body))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Select), nod(n.Body))
 	case *ast.SelectorExpr:
 		// do not have complete info here
-		begin, end, ok := findComment(cmt, nod(n.X), nod(n.Sel))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.X), nod(n.Sel))
 	case *ast.SendStmt:
-		begin, end, ok := findComment(cmt, nod(n.Chan), tok(n.Arrow), nod(n.Value))
-		if ok {
-			return begin, end
-		}
-
+		return findComment(cmt, nod(n.Chan), tok(n.Arrow), nod(n.Value))
 	case *ast.SliceExpr:
-		begin, end, ok := findComment(cmt, nod(n.X), tok(n.Lbrack), nod(n.Low), nod(n.High), nod(n.Max), tok(n.Rbrack))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.X), tok(n.Lbrack), nod(n.Low), nod(n.High), nod(n.Max), tok(n.Rbrack))
 	case *ast.StarExpr:
 		// only one spot in this expression we can be
-		begin, end, ok := findComment(cmt, tok(n.Star), nod(n.X))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Star), nod(n.X))
 	case *ast.StructType:
 		// only one spot in this grammar we can be
-		begin, end, ok := findComment(cmt, tok(n.Struct), nod(n.Fields))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Struct), nod(n.Fields))
 	case *ast.SwitchStmt:
-		begin, end, ok := findComment(cmt, tok(n.Switch), nod(n.Init), nod(n.Tag), nod(n.Body))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Switch), nod(n.Init), nod(n.Tag), nod(n.Body))
 	case *ast.TypeAssertExpr:
 		// incomplete position information, where is the dot?
-		begin, end, ok := findComment(cmt, nod(n.X), tok(n.Lparen), nod(n.Type), tok(n.Rparen))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.X), tok(n.Lparen), nod(n.Type), tok(n.Rparen))
 	case *ast.TypeSpec:
-		begin, end, ok := findComment(cmt, nod(n.Name), nod(n.TypeParams), tok(n.Assign), nod(n.Type))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, nod(n.Name), nod(n.TypeParams), tok(n.Assign), nod(n.Type))
 	case *ast.TypeSwitchStmt:
-		begin, end, ok := findComment(cmt, tok(n.Switch), nod(n.Init), nod(n.Assign), nod(n.Body))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.Switch), nod(n.Init), nod(n.Assign), nod(n.Body))
 	case *ast.UnaryExpr:
 		// only one spot in this grammar we can be
-		begin, end, ok := findComment(cmt, tok(n.OpPos), nod(n.X))
-		if ok {
-			return begin, end
-		}
+		return findComment(cmt, tok(n.OpPos), nod(n.X))
 	}
 	log.Panicf("unhandled node %T, %s", cur.Node(), line(cmt))
 	panic("unreachable")
@@ -458,11 +332,7 @@ func caseClause(node ast.Node, cmt *ast.CommentGroup, cur inspector.Cursor) (tok
 		endtok = switchBody.ChildAt(k, i+1).Node().Pos()
 	}
 
-	begin, end, ok := findComment(cmt, tok(cas), elist, tok(colon), list(body), tok(endtok))
-	if ok {
-		return begin, end
-	}
-	panic("did not find comment")
+	return findComment(cmt, tok(cas), elist, tok(colon), list(body), tok(endtok))
 }
 
 func nod(node ast.Node) []ast.Node {
@@ -497,24 +367,23 @@ func list[List ~[]N, N ast.Node](n List) []ast.Node {
 	return ret
 }
 
-func findComment(cmt *ast.CommentGroup, list ...[]ast.Node) (token.Pos, token.Pos, bool) {
+func findComment(cmt *ast.CommentGroup, list ...[]ast.Node) (token.Pos, token.Pos) {
 	var nodelist []ast.Node
 	for _, n := range list {
 		if n == nil {
 			continue
 		}
-		for _, nn := range n {
-			nodelist = append(nodelist, nn)
-		}
+		nodelist = append(nodelist, n...)
 	}
 	for i := 1; i < len(nodelist); i++ {
 		pn := nodelist[i-1]
 		nn := nodelist[i]
 		if pn.End() < cmt.Pos() && cmt.End() < nn.Pos() {
-			return pn.End(), nn.Pos(), true
+			return pn.End(), nn.Pos()
 		}
 	}
-	return token.NoPos, token.NoPos, false
+	log.Panicf("could not find comment in node %s", line(cmt))
+	panic("panic")
 }
 
 func commentKind(ek edge.Kind, _ int) bool {
