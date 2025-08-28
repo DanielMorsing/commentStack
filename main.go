@@ -171,6 +171,9 @@ func findLimits(cmt *ast.CommentGroup, outer inspector.Cursor) *commentRange {
 	}
 }
 
+// getTokens returns the specific tokens that bound the comment. Where astutil.PathEnclosingInterval
+// and cursor.FindByPos finds the one Node that entirely encloses a position (and hence comment),
+// gettoken can return tokens that belong to different AST nodes.
 func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Pos) {
 	switch n := cur.Node().(type) {
 	case *ast.ArrayType:
@@ -247,6 +250,20 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 			panic("did not find comment")
 		}
 		return begin, end
+
+	case *ast.ChanType:
+		begintok := n.Begin
+		if n.Arrow != token.NoPos {
+			begintok = n.Arrow
+			begin, end, ok := commentBetween(nt(n.Begin), nt(n.Arrow), cmt)
+			if ok {
+				return begin, end
+			}
+		}
+		begin, end, ok := commentBetween(nt(begintok), n.Value, cmt)
+		if ok {
+			return begin, end
+		}
 
 	case *ast.CompositeLit:
 		begin, end, ok := commentBetween(n.Type, nt(n.Lbrace), cmt)
