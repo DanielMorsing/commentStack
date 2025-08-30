@@ -203,9 +203,9 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 	case *ast.CallExpr:
 		return findComment(cmt, nod(n.Fun), tok(n.Lparen), list(n.Args), tok(n.Ellipsis), tok(n.Rparen))
 	case *ast.CaseClause:
-		return caseClause(n, cmt, cur)
+		return caseClause(cmt, n, cur)
 	case *ast.CommClause:
-		return caseClause(n, cmt, cur)
+		return caseClause(cmt, n, cur)
 	case *ast.Comment:
 		panic("found comment")
 	case *ast.CommentGroup:
@@ -303,7 +303,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 	panic("unreachable")
 }
 
-func caseClause(node ast.Node, cmt *ast.CommentGroup, cur inspector.Cursor) (token.Pos, token.Pos) {
+func caseClause(cmt *ast.CommentGroup, node ast.Node, cur inspector.Cursor) (token.Pos, token.Pos) {
 	var cas, colon token.Pos
 	var elist []ast.Node
 	var body []ast.Stmt

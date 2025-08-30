@@ -12,7 +12,7 @@ func alwaysFalse() {
 type s [] /*dum*/ int
 
 // Yes
-func /* dumdum */ (rev *recv) send(ireq *http.Request) (resp *http.Response, didTimeout func() bool, err error) {
+func /* dumdum */ (rev *recv) send(ireq *http.Request) (resp *http.Response /*test*/, didTimeout func() bool, err error) {
 	// comment before a statement
 	b := c
 
