@@ -13,7 +13,10 @@ func x() {
 	switch {
 	case foobar(), // for fluuxing
 		a || b:
+		stmt()
 		// because Something
+	case somethingelse:
+		// something
 	}
 
 	foobar.v( /* jfkl */

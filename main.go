@@ -153,25 +153,13 @@ func (t *transitionsPrinter) Step(before ast.Node, after ast.Node) *ast.CommentG
 }
 
 func findLimits(cmt *ast.CommentGroup, outer inspector.Cursor) *commentRange {
-	// These are the specific tokens that bound the comment
-	prevToken, nextToken := getTokens(outer, cmt)
+	prevNode, nextNode := getTokens(outer, cmt)
 
-	prevCursor, _ := outer.FindByPos(prevToken, prevToken)
-	for {
-		parent := prevCursor.Parent()
-		if parent.Node().End() > cmt.Pos() {
-			break
-		}
-		prevCursor = parent
-	}
-	nextCursor, _ := outer.FindByPos(nextToken, nextToken)
-	for {
-		parent := nextCursor.Parent()
-		if parent.Node() == nil || cmt.End() > parent.Node().Pos() {
-			break
-		}
-		nextCursor = parent
-	}
+	prevToken := prevNode.End()
+	nextToken := nextNode.Pos()
+	prevCursor := findOwningCursor(outer, prevNode)
+	nextCursor := findOwningCursor(outer, nextNode)
+
 	return &commentRange{
 		comment:    cmt,
 		prevToken:  prevToken,
@@ -181,12 +169,23 @@ func findLimits(cmt *ast.CommentGroup, outer inspector.Cursor) *commentRange {
 	}
 }
 
-// getTokens returns the specific tokens that bound the comment. Where astutil.PathEnclosingInterval
-// and cursor.FindByPos finds the one Node that entirely encloses a position (and hence comment),
-// gettoken can return tokens that belong to different AST nodes.
+func findOwningCursor(outer inspector.Cursor, node ast.Node) inspector.Cursor {
+	if _, ok := node.(nodeToken); ok {
+		return outer
+	}
+	c, ok := outer.FindNode(node)
+	if !ok {
+		panic("bad findowner")
+	}
+	return c
+}
+
+// getTokens returns the specific nodes that bound the comment. Where astutil.PathEnclosingInterval
+// and cursor.FindByPos finds the one Node that entirely encloses a position,
+// gettoken can return either a set of nodes, or nodeTokens, nodes that .
 //
 // TODO(dmo): could this be done with reflect and carve-outs
-func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Pos) {
+func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (ast.Node, ast.Node) {
 	switch n := cur.Node().(type) {
 	case *ast.ArrayType:
 		return findComment(cmt, tok(n.Lbrack), nod(n.Len), nod(n.Elt))
@@ -303,7 +302,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (prev, next token.Po
 	panic("unreachable")
 }
 
-func caseClause(cmt *ast.CommentGroup, node ast.Node, cur inspector.Cursor) (token.Pos, token.Pos) {
+func caseClause(cmt *ast.CommentGroup, node ast.Node, cur inspector.Cursor) (ast.Node, ast.Node) {
 	var cas, colon token.Pos
 	var elist []ast.Node
 	var body []ast.Stmt
@@ -355,6 +354,8 @@ func nod(node ast.Node) []ast.Node {
 type nodeToken token.Pos
 
 func (n nodeToken) Pos() token.Pos { return token.Pos(n) }
+
+// TODO(dmo): care about token length?
 func (n nodeToken) End() token.Pos { return token.Pos(n + 1) }
 
 func tok(p token.Pos) []ast.Node {
@@ -375,7 +376,7 @@ func list[List ~[]N, N ast.Node](n List) []ast.Node {
 	return ret
 }
 
-func findComment(cmt *ast.CommentGroup, list ...[]ast.Node) (token.Pos, token.Pos) {
+func findComment(cmt *ast.CommentGroup, list ...[]ast.Node) (ast.Node, ast.Node) {
 	var nodelist []ast.Node
 	for _, n := range list {
 		if n == nil {
@@ -387,7 +388,7 @@ func findComment(cmt *ast.CommentGroup, list ...[]ast.Node) (token.Pos, token.Po
 		pn := nodelist[i-1]
 		nn := nodelist[i]
 		if pn.End() < cmt.Pos() && cmt.End() < nn.Pos() {
-			return pn.End(), nn.Pos()
+			return pn, nn
 		}
 	}
 	log.Panicf("could not find comment in node %s", line(cmt))

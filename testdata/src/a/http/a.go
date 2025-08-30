@@ -45,5 +45,5 @@ func /* dumdum */ (rev *recv) send(ireq *http.Request) (resp *http.Response /*te
 	foobar.v( /* jfkl */
 	)
 	foobar.v() // fjkls
-	foobar.v /*fjkl*/ ()
+	foobar. /*fjkl*/ v()
 }
