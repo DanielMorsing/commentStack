@@ -15,6 +15,7 @@ func x() {
 		a || b:
 		stmt()
 		// because Something
+		stmt()
 	case somethingelse:
 		// something
 	}

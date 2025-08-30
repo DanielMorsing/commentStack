@@ -182,12 +182,14 @@ func findOwningCursor(outer inspector.Cursor, node ast.Node) inspector.Cursor {
 
 // getTokens returns the specific nodes that bound the comment. Where astutil.PathEnclosingInterval
 // and cursor.FindByPos finds the one Node that entirely encloses a position,
-// gettoken can return either a set of nodes, or nodeTokens, nodes that .
+// gettoken returns the 2 nodes that contain the position. That can either be
+// 2 different AST grammars or a token wrapped in a nodeToken.
 //
 // TODO(dmo): could this be done with reflect and carve-outs
 func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (ast.Node, ast.Node) {
 	switch n := cur.Node().(type) {
 	case *ast.ArrayType:
+		// To figure out where specific comment is, need n.RBrack
 		return findComment(cmt, tok(n.Lbrack), nod(n.Len), nod(n.Elt))
 	case *ast.AssignStmt:
 		return findComment(cmt, list(n.Lhs), tok(n.TokPos), list(n.Rhs))
@@ -198,6 +200,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (ast.Node, ast.Node)
 	case *ast.BlockStmt:
 		return findComment(cmt, tok(n.Lbrace), list(n.List), tok(n.Rbrace))
 	case *ast.BranchStmt:
+		// only one spot for comment
 		return findComment(cmt, tok(n.TokPos), nod(n.Label))
 	case *ast.CallExpr:
 		return findComment(cmt, nod(n.Fun), tok(n.Lparen), list(n.Args), tok(n.Ellipsis), tok(n.Rparen))
@@ -211,9 +214,11 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (ast.Node, ast.Node)
 		panic("found comment")
 
 	case *ast.ChanType:
+		// cannot distinguish comment position here, no chan keyword position
 		return findComment(cmt, tok(n.Begin), tok(n.Arrow), nod(n.Value))
 
 	case *ast.CompositeLit:
+		// cannot distinguish comment position, comma after elements not positioned
 		return findComment(cmt, nod(n.Type), tok(n.Lbrace), list(n.Elts), tok(n.Rbrace))
 	case *ast.DeferStmt:
 		// TODO(dmo): can this just be removed, there's no other place for the comment to be
@@ -222,12 +227,15 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (ast.Node, ast.Node)
 		// TODO(dmo): can this just be removed, there's no other place for the comment to be
 		return findComment(cmt, tok(n.Ellipsis), nod(n.Elt))
 	case *ast.Field:
+		// cannot distinguish comment position, comma between names not positioned
 		return findComment(cmt, list(n.Names), nod(n.Type), nod(n.Tag))
 	case *ast.FieldList:
+		// cannot distinguish comment position, comma or semi after elements not positioned
 		return findComment(cmt, tok(n.Opening), list(n.List), tok(n.Closing))
 	case *ast.File:
 		return findComment(cmt, tok(n.Package), nod(n.Name), list(n.Decls), tok(n.FileEnd))
 	case *ast.ForStmt:
+		// cannot distinguish comment position, semicolon between clauses not positioned
 		return findComment(cmt, tok(n.For), nod(n.Init), nod(n.Cond), nod(n.Post), nod(n.Body))
 	case *ast.FuncDecl:
 		// the func token lives in the n.Type parameter, so inline all its fields into
@@ -253,6 +261,7 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (ast.Node, ast.Node)
 	case *ast.IndexExpr:
 		return findComment(cmt, nod(n.X), tok(n.Lbrack), nod(n.Index), tok(n.Rbrack))
 	case *ast.IndexListExpr:
+		// cannot distinguish comment position, comma after elements not positioned
 		return findComment(cmt, nod(n.X), tok(n.Lbrack), list(n.Indices), tok(n.Rbrack))
 	case *ast.InterfaceType:
 		return findComment(cmt, tok(n.Interface), nod(n.Methods))
@@ -267,17 +276,20 @@ func getTokens(cur inspector.Cursor, cmt *ast.CommentGroup) (ast.Node, ast.Node)
 	case *ast.ParenExpr:
 		return findComment(cmt, tok(n.Lparen), nod(n.X), tok(n.Rparen))
 	case *ast.RangeStmt:
+		// cannot distinguish comment position, semicolon between clauses not positioned
 		return findComment(cmt, tok(n.For), nod(n.Key), nod(n.Value), tok(n.TokPos), tok(n.Range), nod(n.X), nod(n.Body))
 	case *ast.ReturnStmt:
+		// cannot distinguish comment position, comma between results not positioned
 		return findComment(cmt, tok(n.Return), list(n.Results))
 	case *ast.SelectStmt:
 		return findComment(cmt, tok(n.Select), nod(n.Body))
 	case *ast.SelectorExpr:
-		// do not have complete info here
+		// cannot distinguish comment position, dot not positioned
 		return findComment(cmt, nod(n.X), nod(n.Sel))
 	case *ast.SendStmt:
 		return findComment(cmt, nod(n.Chan), tok(n.Arrow), nod(n.Value))
 	case *ast.SliceExpr:
+		// cannot distinguish comment position, colons positioned
 		return findComment(cmt, nod(n.X), tok(n.Lbrack), nod(n.Low), nod(n.High), nod(n.Max), tok(n.Rbrack))
 	case *ast.StarExpr:
 		// only one spot in this expression we can be
