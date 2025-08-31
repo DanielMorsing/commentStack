@@ -13,6 +13,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"flag"
 	"fmt"
@@ -26,6 +27,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/DanielMorsing/commentStack/go/printer"
 
@@ -41,7 +43,9 @@ var (
 func main() {
 	flag.Parse()
 	pkgpath := flag.Arg(0)
-	files, _, err := parseDir(pkgpath)
+	// For this implementation we need the source file, but if this gets traction,
+	// we should add a NextToken to the comment AST
+	files, srcs, err := parseDir(pkgpath)
 	if err != nil {
 		log.Fatalf("cannot parse: %s", err)
 	}
@@ -49,7 +53,7 @@ func main() {
 	root := inspect.Root()
 	fileRanges := make([][]*commentRange, 0, len(files))
 
-	for _, file := range files {
+	for fileidx, file := range files {
 		fileCur, ok := root.FindNode(file)
 		if !ok {
 			log.Panicf("no cursor for file")
@@ -82,7 +86,7 @@ func main() {
 				ranges[i] = r
 				continue
 			}
-			ranges[i] = findLimits(cmt, outer)
+			ranges[i] = findLimits(cmt, srcs[fileidx], outer)
 		}
 		fileRanges = append(fileRanges, ranges)
 	}
@@ -151,7 +155,32 @@ func (t *transitionsPrinter) Step(before ast.Node, after ast.Node) *ast.CommentG
 	return nil
 }
 
-func findLimits(cmt *ast.CommentGroup, outer inspector.Cursor) *commentRange {
+func findLimits(cmt *ast.CommentGroup, file []byte, outer inspector.Cursor) *commentRange {
+	// We need to find the actual ending position of this commentgroup
+	//
+	// This is real ugly and should be abstracted away with a comment.NextTokenPos or something
+	endComment := cmt.List[len(cmt.List)-1]
+	text := endComment.Text
+	end := []byte{'\n'}
+	if text[1] == '*' {
+		end = []byte{'*', '/'}
+	}
+	endpos := fset.Position(endComment.End())
+	filebase := fset.File(endComment.End()).Base()
+	idx := bytes.Index(file[endpos.Offset-len(end):], end)
+	if idx == -1 {
+		fmt.Println(string(file[endpos.Offset:]))
+		log.Panicf("did not find end of comment %s", line(endComment))
+	}
+	var tokPos token.Pos
+	for i := idx + endpos.Offset; i < len(file); i++ {
+		b := file[i]
+		if !unicode.IsSpace(rune(b)) {
+			tokPos = token.Pos(filebase + i)
+			break
+		}
+	}
+
 	prevNode, nextNode := getTokens(outer, cmt)
 
 	prevToken := prevNode.End()
@@ -160,11 +189,12 @@ func findLimits(cmt *ast.CommentGroup, outer inspector.Cursor) *commentRange {
 	nextCursor := findOwningCursor(outer, nextNode)
 
 	return &commentRange{
-		comment:    cmt,
-		prevToken:  prevToken,
-		nextToken:  nextToken,
-		prevCursor: prevCursor,
-		nextCursor: nextCursor,
+		comment:          cmt,
+		prevToken:        prevToken,
+		nextToken:        nextToken,
+		prevCursor:       prevCursor,
+		nextCursor:       nextCursor,
+		TestCommentToken: tokPos,
 	}
 }
 
@@ -423,6 +453,8 @@ type commentRange struct {
 	nextCursor inspector.Cursor
 	prevToken  token.Pos
 	nextToken  token.Pos
+
+	TestCommentToken token.Pos
 }
 
 func (r *commentRange) String() string {
@@ -437,6 +469,8 @@ func (r *commentRange) String() string {
 	fmt.Fprintf(&b, "\tprev Cursor %s\n", cursorstr)
 	fmt.Fprintf(&b, "\tnext %s\n", line(nodeToken(r.nextToken)))
 	fmt.Fprintf(&b, "\tnext Cursor %T %s\n", r.nextCursor.Node(), line(r.nextCursor.Node()))
+
+	fmt.Fprintf(&b, "\tcommentPos %s\n", line(nodeToken(r.TestCommentToken)))
 	return b.String()
 }
 
