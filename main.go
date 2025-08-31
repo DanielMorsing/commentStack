@@ -26,7 +26,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/DanielMorsing/commentStack/go/printer"
 
@@ -42,7 +41,7 @@ var (
 func main() {
 	flag.Parse()
 	pkgpath := flag.Arg(0)
-	files, err := parseDir(pkgpath)
+	files, _, err := parseDir(pkgpath)
 	if err != nil {
 		log.Fatalf("cannot parse: %s", err)
 	}
@@ -453,41 +452,33 @@ func sortComments(comms []*ast.CommentGroup) {
 	})
 }
 
-func parseDir(dir string) ([]*ast.File, error) {
+func parseDir(dir string) ([]*ast.File, [][]byte, error) {
 	ctxt := build.Default
 	pkginfo, err := ctxt.ImportDir(dir, 0)
 	if _, nogo := err.(*build.NoGoError); err != nil && !nogo {
-		return nil, err
+		return nil, nil, err
 	}
 	filenames := append(pkginfo.GoFiles, pkginfo.CgoFiles...)
 	return parseFiles(dir, filenames)
 }
 
-func parseFiles(dir string, filenames []string) ([]*ast.File, error) {
+func parseFiles(dir string, filenames []string) ([]*ast.File, [][]byte, error) {
 	files := make([]*ast.File, len(filenames))
-	errors := make([]error, len(filenames))
+	srcs := make([][]byte, len(filenames))
 
-	var wg sync.WaitGroup
 	for i, filename := range filenames {
-		wg.Add(1)
-		go func(i int, filepath string) {
-			defer wg.Done()
-			files[i], errors[i] = parse(filepath, nil)
-		}(i, filepath.Join(dir, filename))
-		if true {
-			wg.Wait()
-		}
-	}
-	wg.Wait()
-
-	// if there are errors, return the first one for deterministic results
-	for _, err := range errors {
+		var err error
+		filepath := filepath.Join(dir, filename)
+		srcs[i], err = os.ReadFile(filepath)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		files[i], err = parse(filepath, srcs[i])
+		if err != nil {
+			return nil, nil, err
 		}
 	}
-
-	return files, nil
+	return files, srcs, nil
 }
 
 // parse may be called concurrently
