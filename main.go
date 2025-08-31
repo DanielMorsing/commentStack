@@ -132,10 +132,6 @@ func main() {
 				Transitions: &transitionsPrinter{},
 			}
 			cfg.Fprint(os.Stdout, fset, f)
-			fcur, _ := root.FindNode(f)
-			for c := range fcur.Preorder() {
-				fmt.Printf("%T\n", c.Node())
-			}
 		}
 	}
 }
