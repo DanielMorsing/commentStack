@@ -158,7 +158,7 @@ func (t *transitionsPrinter) Step(before ast.Node, after ast.Node) *ast.CommentG
 func findLimits(cmt *ast.CommentGroup, file []byte, outer inspector.Cursor) *commentRange {
 	// We need to find the actual ending position of this commentgroup
 	//
-	// This is real ugly and should be abstracted away with a comment.NextTokenPos or something
+	// This is real ugly and should be abstracted away with a comment.{Prev,Next}TokenPos added to go/ast
 	endComment := cmt.List[len(cmt.List)-1]
 	text := endComment.Text
 	end := []byte{'\n'}
@@ -188,6 +188,15 @@ func findLimits(cmt *ast.CommentGroup, file []byte, outer inspector.Cursor) *com
 	prevCursor := findOwningCursor(outer, prevNode)
 	nextCursor := findOwningCursor(outer, nextNode)
 
+	tokbetween := tokenBetween(prevCursor, nextCursor)
+	if tokbetween {
+		if tokPos < nextCursor.Node().Pos() {
+			nextCursor = nextCursor.Parent()
+		} else {
+			prevCursor = prevCursor.Parent()
+		}
+	}
+
 	return &commentRange{
 		comment:          cmt,
 		prevToken:        prevToken,
@@ -195,6 +204,42 @@ func findLimits(cmt *ast.CommentGroup, file []byte, outer inspector.Cursor) *com
 		prevCursor:       prevCursor,
 		nextCursor:       nextCursor,
 		TestCommentToken: tokPos,
+		TestTokenBetween: tokbetween,
+	}
+}
+
+// tokenBetween reports whether there is a token between 2 cursors
+// that doesn't occur in the AST
+//
+// TODO(dmo): remove if we implement prevtoken for ast.CommentGroup
+func tokenBetween(a, b inspector.Cursor) bool {
+	if a.Parent() != b.Parent() {
+		return false
+	}
+	// semicolons for for loops
+	if _, ok := a.Parent().Node().(*ast.ForStmt); ok {
+		return true
+	}
+	aek, _ := a.ParentEdge()
+	bek, _ := b.ParentEdge()
+	if aek != bek {
+		return false
+	}
+	switch aek {
+	case edge.AssignStmt_Lhs, edge.AssignStmt_Rhs,
+		edge.CallExpr_Args, edge.CaseClause_List, edge.CompositeLit_Elts,
+		edge.IndexListExpr_Indices, edge.ReturnStmt_Results:
+		return true
+	case edge.FieldList_List:
+		// are we in a comma or implied semicolon list
+		pek, _ := a.Parent().ParentEdge()
+		switch pek {
+		case edge.StructType_Fields, edge.InterfaceType_Methods:
+			return false
+		}
+		return true
+	default:
+		return false
 	}
 }
 
@@ -428,7 +473,7 @@ func findComment(cmt *ast.CommentGroup, list ...[]ast.Node) (ast.Node, ast.Node)
 	for i := 1; i < len(nodelist); i++ {
 		pn := nodelist[i-1]
 		nn := nodelist[i]
-		if pn.End() < cmt.Pos() && cmt.End() < nn.Pos() {
+		if pn.End() <= cmt.Pos() && cmt.End() <= nn.Pos() {
 			return pn, nn
 		}
 	}
@@ -455,29 +500,46 @@ type commentRange struct {
 	nextToken  token.Pos
 
 	TestCommentToken token.Pos
+	TestTokenBetween bool
 }
 
 func (r *commentRange) String() string {
 	var b strings.Builder
 	fmt.Fprintln(&b, line(r.comment))
-	fmt.Fprintf(&b, "\tprev %s\n", line(nodeToken(r.prevToken)))
+	fmt.Fprintf(&b, "\tprev %s\n", line(r.prevToken))
 	cursorstr := "<ROOT>"
 	cNode := r.prevCursor.Node()
 	if cNode != nil {
 		cursorstr = fmt.Sprintf("%T %s", cNode, line(cNode))
 	}
 	fmt.Fprintf(&b, "\tprev Cursor %s\n", cursorstr)
-	fmt.Fprintf(&b, "\tnext %s\n", line(nodeToken(r.nextToken)))
+	if r.TestTokenBetween {
+		fmt.Fprintf(&b, "BETWEEN\n")
+	}
+	fmt.Fprintf(&b, "\tnext %s\n", line(r.nextToken))
 	fmt.Fprintf(&b, "\tnext Cursor %T %s\n", r.nextCursor.Node(), line(r.nextCursor.Node()))
 
 	fmt.Fprintf(&b, "\tcommentPos %s\n", line(nodeToken(r.TestCommentToken)))
 	return b.String()
 }
 
-func line(n ast.Node) string {
-	begin := fset.Position(n.Pos())
-	end := fset.Position(n.End())
-	return fmt.Sprintf("./%s:%v:%v:%v:%v", begin.Filename, begin.Line, begin.Column, end.Line, end.Column)
+func line(iface any) string {
+	var pos, end token.Pos
+	switch n := iface.(type) {
+	case ast.Node:
+		pos, end = n.Pos(), n.End()
+	case token.Pos:
+		pos = n
+	default:
+		panic("bad line")
+	}
+	begin := fset.Position(pos)
+	endstr := ""
+	if end != token.NoPos {
+		endPos := fset.Position(end)
+		endstr = fmt.Sprintf(":%v:%v", endPos.Line, endPos.Column)
+	}
+	return fmt.Sprintf("./%s:%v:%v%s", begin.Filename, begin.Line, begin.Column, endstr)
 }
 
 func sortComments(comms []*ast.CommentGroup) {

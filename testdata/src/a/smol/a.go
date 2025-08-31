@@ -10,9 +10,11 @@ func foobar() bool {
 var a, b bool
 
 func x() {
+	if x /*something*/ {
+
+	}
 	switch {
-	case foobar(), // for fluuxing
-		a || b:
+	case foobar() /* for fluuxing */, a || b:
 		stmt()
 		// because Something
 		stmt()
@@ -24,4 +26,13 @@ func x() {
 	)
 	foobar.v() // fjkls
 	foobar.v /*fjkl*/ ()
+}
+
+func something( /*argument*/ a int, /*something*/
+	b int) {
+}
+
+type s struct {
+	b/* int because?? */ int /*intls*/
+	y                        int
 }
