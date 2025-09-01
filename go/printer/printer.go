@@ -1348,7 +1348,7 @@ type Config struct {
 // be in lockstep so we don't have to recalculate them from scratch, but the inspector
 // is fast, so leave it as ast.Nodes for now.
 type Transitions interface {
-	Step(before ast.Node, after ast.Node) *ast.CommentGroup
+	Step(before ast.Node, after ast.Node) []*ast.CommentGroup
 }
 
 var printerPool = sync.Pool{

@@ -72,13 +72,15 @@ func (p *printer) setComment(g *ast.CommentGroup) {
 		// initialize p.comments lazily
 		p.comments = make([]*ast.CommentGroup, 1)
 	} else if p.cindex < len(p.comments) {
-		// for some reason there are pending comments; this
-		// should never happen - handle gracefully and flush
-		// all comments up to g, ignore anything after that
+		// for some reason there are pending comments;
+		// Usually, this is because of transition comments
+		// flush all comments up to g, ignore anything after that
 		p.flush(p.posFor(g.List[0].Pos()), token.ILLEGAL)
 		p.comments = p.comments[0:1]
-		// in debug mode, report error
-		p.internalError("setComment found pending comments")
+		if p.Transitions == nil {
+			// in debug mode, report error
+			p.internalError("setComment found pending comments")
+		}
 	}
 	p.comments[0] = g
 	p.cindex = 0
@@ -2012,9 +2014,11 @@ func (p *printer) step(n ast.Node) {
 	if p.Config.Transitions == nil {
 		return
 	}
-	cmt := p.Config.Transitions.Step(p.lastNode, n)
+	cmts := p.Config.Transitions.Step(p.lastNode, n)
 	p.lastNode = n
-	p.setComment(cmt)
+	for _, c := range cmts {
+		p.setComment(c)
+	}
 }
 
 func (p *printer) file(src *ast.File) {

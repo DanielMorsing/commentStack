@@ -166,7 +166,7 @@ func newPassthrough(cur inspector.Cursor, rngs []*commentRange) *passthrough {
 	}
 }
 
-func (p *passthrough) Step(before ast.Node, after ast.Node) *ast.CommentGroup {
+func (p *passthrough) Step(before ast.Node, after ast.Node) []*ast.CommentGroup {
 	// This is super inefficient, but good enough for proof of concept
 	beginCur, ok := p.cursor.FindNode(before)
 	if !ok && before != nil {
@@ -177,12 +177,13 @@ func (p *passthrough) Step(before ast.Node, after ast.Node) *ast.CommentGroup {
 		panic("ARGH")
 	}
 	beginlist := p.begin[beginCur]
-	for i, r := range beginlist {
+	var cmtlist []*ast.CommentGroup
+	for _, r := range beginlist {
 		if r.nextCursor == endCur {
-			return r.comment
+			cmtlist = append(cmtlist, r.comment)
 		}
 	}
-	return nil
+	return cmtlist
 }
 
 type commentRange struct {
