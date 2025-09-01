@@ -64,13 +64,17 @@ func main() {
 			if tok == token.SEMICOLON && lit == "\n" {
 				continue
 			}
-			if cmt.End() <= pos {
+			for cmt.End() <= pos {
 				ranges = append(ranges, &commentRange{
 					comment:   cmt,
 					prevToken: prevToken,
 					nextToken: pos,
 				})
 				cmtIdx += 1
+				if cmtIdx == len(file.Comments) {
+					break
+				}
+				cmt = file.Comments[cmtIdx]
 			}
 			switch tok {
 			case token.IDENT, token.INT, token.FLOAT, token.IMAG, token.CHAR, token.STRING:
@@ -173,7 +177,7 @@ func (p *passthrough) Step(before ast.Node, after ast.Node) *ast.CommentGroup {
 		panic("ARGH")
 	}
 	beginlist := p.begin[beginCur]
-	for _, r := range beginlist {
+	for i, r := range beginlist {
 		if r.nextCursor == endCur {
 			return r.comment
 		}
