@@ -127,10 +127,12 @@ func main() {
 			// remove free floating comments
 			f.Comments = nil
 			cfg := printer.Config{
-				Mode:        0,
-				Tabwidth:    8,
-				Indent:      0,
-				Transitions: &transitionsPrinter{},
+				Mode:     0,
+				Tabwidth: 8,
+				Indent:   0,
+				Transitions: &passthrough{
+					cursor: root,
+				},
 			}
 			cfg.Fprint(os.Stdout, fset, f)
 		}
@@ -142,14 +144,16 @@ func (r *commentRange) findCursors(cur inspector.Cursor) {
 	r.nextCursor, _ = cur.FindByPos(r.nextToken, r.nextToken)
 }
 
-type transitionsPrinter struct{}
+type passthrough struct {
+	cursor inspector.Cursor
+}
 
-func (t *transitionsPrinter) Step(before ast.Node, after ast.Node) *ast.CommentGroup {
-	if before == nil {
-		return nil
+func (p *passthrough) Step(before ast.Node, after ast.Node) *ast.CommentGroup {
+	return &ast.CommentGroup{
+		List: []*ast.Comment{
+			{Text: fmt.Sprintf("/* %T->%T */", before, after)},
+		},
 	}
-	fmt.Printf("%T->%T %s\n", before, after, line(before))
-	return nil
 }
 
 type commentRange struct {

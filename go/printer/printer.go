@@ -904,7 +904,7 @@ func (p *printer) print(n ast.Node, args ...any) {
 	if len(args) == 0 {
 		panic("no token for print")
 	}
-	if n != nil && n != p.lastNode {
+	if n != nil {
 		p.step(n)
 	}
 	for _, arg := range args {
