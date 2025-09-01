@@ -144,6 +144,10 @@ func main() {
 func (r *commentRange) findCursors(cur inspector.Cursor) {
 	r.prevCursor, _ = cur.FindByPos(r.prevToken, r.prevToken)
 	r.nextCursor, _ = cur.FindByPos(r.nextToken, r.nextToken)
+
+	if f, ok := r.prevCursor.Node().(*ast.File); ok && r.prevToken < f.Package {
+		r.prevCursor = cur.Inspector().Root()
+	}
 }
 
 type passthrough struct {
@@ -168,9 +172,14 @@ func newPassthrough(cur inspector.Cursor, rngs []*commentRange) *passthrough {
 
 func (p *passthrough) Step(before ast.Node, after ast.Node) []*ast.CommentGroup {
 	// This is super inefficient, but good enough for proof of concept
+
 	beginCur, ok := p.cursor.FindNode(before)
-	if !ok && before != nil {
-		panic("ARGH")
+	if !ok {
+		if before == nil {
+			beginCur = p.cursor
+		} else {
+			panic("ARGH")
+		}
 	}
 	endCur, ok := p.cursor.FindNode(after)
 	if !ok {
