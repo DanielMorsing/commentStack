@@ -131,7 +131,14 @@ func (p *printer) nextComment() {
 		p.cindex++
 		if list := c.List; len(list) > 0 {
 			p.comment = c
-			p.commentOffset = p.posFor(list[0].Pos()).Offset
+			if p.Config.Transitions == nil {
+				p.commentOffset = p.posFor(list[0].Pos()).Offset
+			} else {
+				// if we are using transition comments, choose an
+				// offset that is before any AST node. This makes sure we flush
+				// on every call to [printer.print]
+				p.commentOffset = -1
+			}
 			p.commentNewline = p.commentsHaveNewline(list)
 			return
 		}
