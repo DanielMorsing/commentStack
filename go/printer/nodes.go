@@ -451,12 +451,8 @@ func (p *printer) signature(sig *ast.FuncType) {
 		p.print(nil, blank)
 		if n == 1 && res.List[0].Names == nil {
 			// single anonymous res; no ()'s
-			// preorder traversal with ast.Inspect yields the field list, even if there's no tokens
-			// so we have to manually step it around this expression
 			// TODO(dmo): does expression equality matter here?
-			p.step(res)
 			p.expr(stripParensAlways(res.List[0].Type))
-			p.step(res)
 			return
 		}
 		p.parameters(res, funcParam)
