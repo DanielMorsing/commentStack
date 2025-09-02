@@ -10,22 +10,22 @@ func foobar() bool {
 var a, b bool
 
 func x() {
-	if x /*something*/ {
+	if x /*inside if*/ {
 
 	}
 	switch {
-	case foobar() /* for fluuxing */, a || b:
+	case foobar() /* caseclause */, a || b:
 		stmt()
-		// because Something
+		// between caseclause stmts
 		stmt()
 	case somethingelse:
-		// something
+		// other clause
 	}
 
-	foobar.v( /* jfkl */
+	foobar.v( /* between call */
 	)
-	foobar.v() // fjkls
-	foobar.v /*fjkl*/ ()
+	foobar.v() // after call
+	foobar.v /*between expr and call*/ ()
 }
 
 func something( /*argument*/ a int, /*something*/
