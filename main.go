@@ -104,29 +104,7 @@ func main() {
 		// remove all comments from the AST
 		// TODO: if the go printer has a change
 		// then this should probably be a flag.
-		for cur := range root.Preorder((*ast.CommentGroup)(nil)) {
-			parent := cur.Parent().Node()
-			switch n := parent.(type) {
-			case *ast.Field:
-				n.Doc = nil
-				n.Comment = nil
-			case *ast.File:
-				n.Doc = nil
-			case *ast.FuncDecl:
-				n.Doc = nil
-			case *ast.GenDecl:
-				n.Doc = nil
-			case *ast.ImportSpec:
-				n.Doc = nil
-				n.Comment = nil
-			case *ast.TypeSpec:
-				n.Doc = nil
-				n.Comment = nil
-			case *ast.ValueSpec:
-				n.Doc = nil
-				n.Comment = nil
-			}
-		}
+		clearComments(root)
 		for fidx, f := range files {
 			// remove free floating comments
 			f.Comments = nil
@@ -137,6 +115,36 @@ func main() {
 				Transitions: newPassthrough(fileRanges[fidx]),
 			}
 			cfg.Fprint(os.Stdout, fset, f)
+		}
+	}
+}
+
+func clearComments(root inspector.Cursor) {
+	for fcur := range root.Children() {
+		f := fcur.Node().(*ast.File)
+		f.Comments = nil
+	}
+	for cur := range root.Preorder((*ast.CommentGroup)(nil)) {
+		parent := cur.Parent().Node()
+		switch n := parent.(type) {
+		case *ast.Field:
+			n.Doc = nil
+			n.Comment = nil
+		case *ast.File:
+			n.Doc = nil
+		case *ast.FuncDecl:
+			n.Doc = nil
+		case *ast.GenDecl:
+			n.Doc = nil
+		case *ast.ImportSpec:
+			n.Doc = nil
+			n.Comment = nil
+		case *ast.TypeSpec:
+			n.Doc = nil
+			n.Comment = nil
+		case *ast.ValueSpec:
+			n.Doc = nil
+			n.Comment = nil
 		}
 	}
 }
