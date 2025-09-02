@@ -134,7 +134,7 @@ func main() {
 				Mode:        0,
 				Tabwidth:    8,
 				Indent:      0,
-				Transitions: newPassthrough(root, fileRanges[fidx]),
+				Transitions: newPassthrough(fileRanges[fidx]),
 			}
 			cfg.Fprint(os.Stdout, fset, f)
 		}
@@ -151,44 +151,28 @@ func (r *commentRange) findCursors(cur inspector.Cursor) {
 }
 
 type passthrough struct {
-	cursor inspector.Cursor
-	begin  map[inspector.Cursor][]*commentRange
-	end    map[inspector.Cursor][]*commentRange
+	begin map[ast.Node][]*commentRange
+	end   map[ast.Node][]*commentRange
 }
 
-func newPassthrough(cur inspector.Cursor, rngs []*commentRange) *passthrough {
-	begin := make(map[inspector.Cursor][]*commentRange)
-	end := make(map[inspector.Cursor][]*commentRange)
+func newPassthrough(rngs []*commentRange) *passthrough {
+	begin := make(map[ast.Node][]*commentRange)
+	end := make(map[ast.Node][]*commentRange)
 	for _, r := range rngs {
-		begin[r.prevCursor] = append(begin[r.prevCursor], r)
-		end[r.nextCursor] = append(end[r.nextCursor], r)
+		begin[r.prevCursor.Node()] = append(begin[r.prevCursor.Node()], r)
+		end[r.nextCursor.Node()] = append(end[r.nextCursor.Node()], r)
 	}
 	return &passthrough{
-		cursor: cur,
-		begin:  begin,
-		end:    end,
+		begin: begin,
+		end:   end,
 	}
 }
 
 func (p *passthrough) Step(before ast.Node, after ast.Node) []*ast.CommentGroup {
-	// This is super inefficient, but good enough for proof of concept
-
-	beginCur, ok := p.cursor.FindNode(before)
-	if !ok {
-		if before == nil {
-			beginCur = p.cursor
-		} else {
-			panic("ARGH")
-		}
-	}
-	endCur, ok := p.cursor.FindNode(after)
-	if !ok {
-		panic("ARGH")
-	}
-	beginlist := p.begin[beginCur]
+	beginlist := p.begin[before]
 	var cmtlist []*ast.CommentGroup
 	for _, r := range beginlist {
-		if r.nextCursor == endCur {
+		if r.nextCursor.Node() == after {
 			cmtlist = append(cmtlist, r.comment)
 		}
 	}
