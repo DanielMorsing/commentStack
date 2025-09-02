@@ -22,6 +22,7 @@ import (
 	"go/scanner"
 	"go/token"
 	"log"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
@@ -116,6 +117,36 @@ func main() {
 			}
 			cfg.Fprint(os.Stdout, fset, f)
 		}
+	case "shuffle":
+		for _, f := range files {
+			fileCur, _ := root.FindNode(f)
+			shuffleFunc(fileCur)
+			cfg := printer.Config{
+				Mode:     0,
+				Tabwidth: 8,
+				Indent:   0,
+			}
+			cfg.Fprint(os.Stdout, fset, f)
+		}
+	}
+
+}
+
+func shuffleFunc(fileCur inspector.Cursor) {
+	types := []ast.Node{
+		(*ast.FuncDecl)(nil),
+	}
+	for fns := range fileCur.Preorder(types...) {
+		fnsn := fns.Node().(*ast.FuncDecl)
+		if fnsn.Body == nil {
+			continue
+		}
+		perm := rand.Perm(len(fnsn.Body.List))
+		newBody := make([]ast.Stmt, len(fnsn.Body.List))
+		for i, n := range perm {
+			newBody[i] = fnsn.Body.List[n]
+		}
+		fnsn.Body.List = newBody
 	}
 }
 
