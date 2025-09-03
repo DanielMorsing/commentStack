@@ -123,7 +123,7 @@ func main() {
 		for _, f := range files {
 			//fileCur, _ := root.FindNode(f)
 			//shuffleFunc(fileCur)
-			printOrder(f, func(n ast.Node) {
+			tokenVisit(f, func(n ast.Node) {
 				fmt.Printf("%T, %s\n", n, line(n))
 			})
 			cfg := printer.Config{
@@ -154,65 +154,48 @@ func shuffleFunc(fileCur inspector.Cursor) {
 	}
 }
 
-func printOrder(node ast.Node, visit func(ast.Node)) {
-	ast.Inspect(node, adaptInspect(visit))
-}
-
-func adaptInspect(visit func(ast.Node)) func(n ast.Node) bool {
-	return func(n ast.Node) bool {
-		if n == nil {
-			return false
-		}
-		if printVisit(visit, n) {
-			return false
-		}
-		visit(n)
-		return true
-	}
-}
-
-func printVisit(visit func(ast.Node), n ast.Node) bool {
+func tokenVisit(n ast.Node, visit func(ast.Node)) {
 	switch n := n.(type) {
 	case *ast.ArrayType:
-		printVisit1(visit, n, tok(n.Lbrack), tok(token.RBRACK), nod(n.Len), nod(n.Elt))
+		tokenVisit1(visit, n, tok(n.Lbrack), tok(token.RBRACK), nod(n.Len), nod(n.Elt))
 	case *ast.AssignStmt:
-		printVisit1(visit, n, delimList(n.Lhs), tok(n.Tok), delimList(n.Rhs))
+		tokenVisit1(visit, n, delimList(n.Lhs), tok(n.Tok), delimList(n.Rhs))
 	case *ast.BasicLit:
-		printVisit1(visit, n, tok(n.Kind))
+		tokenVisit1(visit, n, tok(n.Kind))
 	case *ast.BinaryExpr:
-		printVisit1(visit, n, nod(n.X), tok(n.Op), nod(n.Y))
+		tokenVisit1(visit, n, nod(n.X), tok(n.Op), nod(n.Y))
 	case *ast.BlockStmt:
-		printVisit1(visit, n, tok(n.Lbrace), list(n.List), tok(n.Rbrace))
+		tokenVisit1(visit, n, tok(n.Lbrace), list(n.List), tok(n.Rbrace))
 	case *ast.BranchStmt:
-		printVisit1(visit, n, tok(n.Tok), nod(n.Label))
+		tokenVisit1(visit, n, tok(n.Tok), nod(n.Label))
 	case *ast.CallExpr:
-		printVisit1(visit, n, nod(n.Fun), tok(n.Lparen), delimList(n.Args), tok(n.Ellipsis), tok(n.Rparen))
+		tokenVisit1(visit, n, nod(n.Fun), tok(n.Lparen), delimList(n.Args), tok(n.Ellipsis), tok(n.Rparen))
 	case *ast.CaseClause:
-		printVisit1(visit, n, tok(n.Case), delimList(n.List), tok(n.Colon), list(n.Body))
+		tokenVisit1(visit, n, tok(n.Case), delimList(n.List), tok(n.Colon), list(n.Body))
 	case *ast.ChanType:
-		printVisit1(visit, n, tok(n.Begin), tok(n.Arrow), nod(n.Value))
+		tokenVisit1(visit, n, tok(n.Begin), tok(n.Arrow), nod(n.Value))
 	case *ast.CommClause:
-		printVisit1(visit, n, tok(n.Case), nod(n.Comm), tok(n.Colon), list(n.Body))
+		tokenVisit1(visit, n, tok(n.Case), nod(n.Comm), tok(n.Colon), list(n.Body))
 	case *ast.CompositeLit:
-		printVisit1(visit, n, nod(n.Type), tok(n.Lbrace), delimList(n.Elts), tok(n.Rbrace))
+		tokenVisit1(visit, n, nod(n.Type), tok(n.Lbrace), delimList(n.Elts), tok(n.Rbrace))
 	case *ast.DeclStmt:
-		printVisit1(visit, n, nod(n.Decl))
+		tokenVisit1(visit, n, nod(n.Decl))
 	case *ast.DeferStmt:
-		printVisit1(visit, n, tok(n.Defer), nod(n.Call))
+		tokenVisit1(visit, n, tok(n.Defer), nod(n.Call))
 	case *ast.Ellipsis:
-		printVisit1(visit, n, tok(n.Ellipsis), nod(n.Elt))
+		tokenVisit1(visit, n, tok(n.Ellipsis), nod(n.Elt))
 	case *ast.EmptyStmt:
 		panic("what do?")
 	case *ast.ExprStmt:
-		printVisit1(visit, n, nod(n.X))
+		tokenVisit1(visit, n, nod(n.X))
 	case *ast.Field:
-		printVisit1(visit, n, delimList(n.Names), nod(n.Type), nod(n.Tag))
+		tokenVisit1(visit, n, delimList(n.Names), nod(n.Type), nod(n.Tag))
 	case *ast.FieldList:
 		panic("missed fieldlist")
 	case *ast.File:
-		printVisit1(visit, n, tok(n.Package), nod(n.Name), list(n.Decls))
+		tokenVisit1(visit, n, tok(n.Package), nod(n.Name), list(n.Decls))
 	case *ast.ForStmt:
-		printVisit1(visit, n,
+		tokenVisit1(visit, n,
 			tok(n.For),
 			opt(n.Init, tok(token.SEMICOLON)),
 			nod(n.Cond),
@@ -221,7 +204,7 @@ func printVisit(visit func(ast.Node), n ast.Node) bool {
 
 	case *ast.FuncDecl:
 		// figure out how these work with cursor ranges.
-		printVisit1(visit, n,
+		tokenVisit1(visit, n,
 			tok(n.Type.Func),
 			fieldlist(n.Recv, false),
 			nod(n.Name),
@@ -230,15 +213,71 @@ func printVisit(visit func(ast.Node), n ast.Node) bool {
 			fieldlist(n.Type.Results, true),
 			nod(n.Body),
 		)
+	case *ast.GenDecl:
+		tokenVisit1(visit, n, tok(n.TokPos), tok(n.Lparen), list(n.Specs), tok(n.Rparen))
+	case *ast.GoStmt:
+		tokenVisit1(visit, n, tok(n.Go), nod(n.Call))
+	case *ast.Ident:
+		tokenVisit1(visit, n, tok(n.NamePos))
 	case *ast.IfStmt:
-		printVisit1(visit, n, tok(n.If), opt(n.Init, tok(token.SEMICOLON)), nod(n.Cond), nod(n.Body), nod(n.Else))
+		tokenVisit1(visit, n, tok(n.If), opt(n.Init, tok(token.SEMICOLON)), nod(n.Cond), nod(n.Body), nod(n.Else))
+	case *ast.IncDecStmt:
+		tokenVisit1(visit, n, nod(n.X), tok(n.TokPos))
+	case *ast.IndexExpr:
+		tokenVisit1(visit, n, nod(n.X), tok(n.Lbrack), nod(n.Index), tok(n.Rbrack))
+	case *ast.IndexListExpr:
+		tokenVisit1(visit, n, nod(n.X), tok(n.Lbrack), delimList(n.Indices), tok(n.Rbrack))
+	case *ast.InterfaceType:
+		tokenVisit1(visit, n, tok(n.Interface), fieldlist(n.Methods, false))
+	case *ast.KeyValueExpr:
+		tokenVisit1(visit, n, nod(n.Key), tok(n.Colon), nod(n.Value))
+	case *ast.LabeledStmt:
+		tokenVisit1(visit, n, nod(n.Label), tok(n.Colon), nod(n.Stmt))
+	case *ast.MapType:
+		tokenVisit1(visit, n, tok(n.Map), tok(token.LBRACK), nod(n.Key), tok(token.RBRACK), nod(n.Value))
+	case *ast.ParenExpr:
+		tokenVisit1(visit, n, tok(n.Lparen), nod(n.X), tok(n.Rparen))
+	case *ast.RangeStmt:
+		if n.Value != nil {
+			tokenVisit1(visit, n, tok(n.For), nod(n.Key), tok(token.COMMA), nod(n.Value), tok(n.TokPos))
+		} else {
+			tokenVisit1(visit, n, tok(n.For), nod(n.Key), tok(n.TokPos))
+		}
+		tokenVisit1(visit, n, tok(n.Range), nod(n.X), nod(n.Body))
+	case *ast.ReturnStmt:
+		tokenVisit1(visit, n, tok(n.Return), delimList(n.Results))
+	case *ast.SelectStmt:
+		tokenVisit1(visit, n, tok(n.Select), nod(n.Body))
+	case *ast.SelectorExpr:
+		tokenVisit1(visit, n, nod(n.X), tok(token.PERIOD), nod(n.Sel))
+	case *ast.SendStmt:
+		tokenVisit1(visit, n, nod(n.Chan), tok(n.Arrow), nod(n.Value))
+	case *ast.SliceExpr:
+		tokenVisit1(visit, n, nod(n.X), tok(n.Lbrack), nod(n.Low), tok(token.COLON), nod(n.High))
+		if n.Slice3 {
+			tokenVisit1(visit, n, tok(token.SEMICOLON), nod(n.High))
+		}
+		tokenVisit1(visit, n, tok(n.Rbrack))
+	case *ast.StarExpr:
+		tokenVisit1(visit, n, tok(n.Star), nod(n.X))
+	case *ast.StructType:
+		tokenVisit1(visit, n, tok(n.Struct), fieldlist(n.Fields, false))
+	case *ast.SwitchStmt:
+		tokenVisit1(visit, n, tok(n.Switch), opt(n.Init, tok(token.SEMICOLON)), nod(n.Tag), nod(n.Body))
+	case *ast.TypeAssertExpr:
+		tokenVisit1(visit, n, nod(n.X), tok(token.PERIOD), tok(n.Lparen), nod(n.Type), tok(n.Rparen))
+	case *ast.TypeSpec:
+		tokenVisit1(visit, n, nod(n.Name), fieldlist(n.TypeParams, true), tok(n.Assign), nod(n.Type))
+	case *ast.TypeSwitchStmt:
+		tokenVisit1(visit, n, tok(n.Switch), opt(n.Init, tok(token.SEMICOLON)), nod(n.Assign), nod(n.Body))
+	case *ast.ValueSpec:
+		tokenVisit1(visit, n, delimList(n.Names), nod(n.Type), delimList(n.Values))
 	default:
-		return false
+		panic("unhandled node")
 	}
-	return true
 }
 
-func printVisit1(visit func(ast.Node), parent ast.Node, components ...[]ast.Node) {
+func tokenVisit1(visit func(ast.Node), parent ast.Node, components ...[]ast.Node) {
 	var r []ast.Node
 	for _, c := range components {
 		r = append(r, c...)
@@ -248,9 +287,7 @@ func printVisit1(visit func(ast.Node), parent ast.Node, components ...[]ast.Node
 		case nodeToken:
 			visit(parent)
 		case ast.Node:
-			if !printVisit(visit, n) {
-				ast.Inspect(n, adaptInspect(visit))
-			}
+			tokenVisit(n, visit)
 		}
 	}
 }
