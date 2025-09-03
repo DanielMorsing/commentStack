@@ -21,6 +21,7 @@ import (
 	"go/parser"
 	"go/scanner"
 	"go/token"
+	"iter"
 	"log"
 	"math/rand/v2"
 	"os"
@@ -59,7 +60,7 @@ func main() {
 		scan := &scanner.Scanner{}
 		scan.Init(fset.File(file.Package), srcs[fileidx], nil, 0)
 		cmtIdx := 0
-		prevToken := file.FileStart
+		prevPos := file.FileStart
 		for cmtIdx < len(file.Comments) {
 			cmt := file.Comments[cmtIdx]
 			pos, tok, lit := scan.Scan()
@@ -68,9 +69,9 @@ func main() {
 			}
 			for cmt.End() <= pos {
 				ranges = append(ranges, &commentRange{
-					comment:   cmt,
-					prevToken: prevToken,
-					nextToken: pos,
+					comment: cmt,
+					prevPos: prevPos,
+					nextPos: pos,
 				})
 				cmtIdx += 1
 				if cmtIdx == len(file.Comments) {
@@ -80,9 +81,9 @@ func main() {
 			}
 			switch tok {
 			case token.IDENT, token.INT, token.FLOAT, token.IMAG, token.CHAR, token.STRING:
-				prevToken = pos + token.Pos(len(lit))
+				prevPos = pos + token.Pos(len(lit))
 			default:
-				prevToken = pos + token.Pos(len(tok.String()))
+				prevPos = pos + token.Pos(len(tok.String()))
 			}
 			if tok == token.EOF {
 				panic("reached eof before end of comments (how??)")
@@ -123,9 +124,9 @@ func main() {
 		for _, f := range files {
 			//fileCur, _ := root.FindNode(f)
 			//shuffleFunc(fileCur)
-			tokenVisit(f, func(n ast.Node) {
-				fmt.Printf("%T, %s\n", n, line(n))
-			})
+			for t := range tokenOrder(f) {
+				fmt.Printf("%T %s\n", t.Node, line(t.Node))
+			}
 			cfg := printer.Config{
 				Mode:     0,
 				Tabwidth: 8,
@@ -154,48 +155,66 @@ func shuffleFunc(fileCur inspector.Cursor) {
 	}
 }
 
-func tokenVisit(n ast.Node, visit func(ast.Node)) {
+// TODO(dmo): better name
+type Token struct {
+	Node ast.Node
+	Pos  token.Position
+	Tok  token.Token
+}
+
+func tokenOrder(root ast.Node) iter.Seq[Token] {
+	return func(yield func(Token) bool) {
+		tokVisit(root, func(n ast.Node) bool {
+			return yield(Token{
+				Node: n,
+			})
+		})
+	}
+}
+
+func tokVisit(n ast.Node, visit func(ast.Node) bool) bool {
+	ok := true
 	switch n := n.(type) {
 	case *ast.ArrayType:
-		tokenVisit1(visit, n, tok(n.Lbrack), tok(token.RBRACK), nod(n.Len), nod(n.Elt))
+		ok = tokenvisit1(visit, n, tok(n.Lbrack), tok(token.RBRACK), nod(n.Len), nod(n.Elt))
 	case *ast.AssignStmt:
-		tokenVisit1(visit, n, delimList(n.Lhs), tok(n.Tok), delimList(n.Rhs))
+		ok = tokenvisit1(visit, n, delimList(n.Lhs), tok(n.Tok), delimList(n.Rhs))
 	case *ast.BasicLit:
-		tokenVisit1(visit, n, tok(n.Kind))
+		ok = tokenvisit1(visit, n, tok(n.Kind))
 	case *ast.BinaryExpr:
-		tokenVisit1(visit, n, nod(n.X), tok(n.Op), nod(n.Y))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Op), nod(n.Y))
 	case *ast.BlockStmt:
-		tokenVisit1(visit, n, tok(n.Lbrace), list(n.List), tok(n.Rbrace))
+		ok = tokenvisit1(visit, n, tok(n.Lbrace), list(n.List), tok(n.Rbrace))
 	case *ast.BranchStmt:
-		tokenVisit1(visit, n, tok(n.Tok), nod(n.Label))
+		ok = tokenvisit1(visit, n, tok(n.Tok), nod(n.Label))
 	case *ast.CallExpr:
-		tokenVisit1(visit, n, nod(n.Fun), tok(n.Lparen), delimList(n.Args), tok(n.Ellipsis), tok(n.Rparen))
+		ok = tokenvisit1(visit, n, nod(n.Fun), tok(n.Lparen), delimList(n.Args), tok(n.Ellipsis), tok(n.Rparen))
 	case *ast.CaseClause:
-		tokenVisit1(visit, n, tok(n.Case), delimList(n.List), tok(n.Colon), list(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Case), delimList(n.List), tok(n.Colon), list(n.Body))
 	case *ast.ChanType:
-		tokenVisit1(visit, n, tok(n.Begin), tok(n.Arrow), nod(n.Value))
+		ok = tokenvisit1(visit, n, tok(n.Begin), tok(n.Arrow), nod(n.Value))
 	case *ast.CommClause:
-		tokenVisit1(visit, n, tok(n.Case), nod(n.Comm), tok(n.Colon), list(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Case), nod(n.Comm), tok(n.Colon), list(n.Body))
 	case *ast.CompositeLit:
-		tokenVisit1(visit, n, nod(n.Type), tok(n.Lbrace), delimList(n.Elts), tok(n.Rbrace))
+		ok = tokenvisit1(visit, n, nod(n.Type), tok(n.Lbrace), delimList(n.Elts), tok(n.Rbrace))
 	case *ast.DeclStmt:
-		tokenVisit1(visit, n, nod(n.Decl))
+		ok = tokenvisit1(visit, n, nod(n.Decl))
 	case *ast.DeferStmt:
-		tokenVisit1(visit, n, tok(n.Defer), nod(n.Call))
+		ok = tokenvisit1(visit, n, tok(n.Defer), nod(n.Call))
 	case *ast.Ellipsis:
-		tokenVisit1(visit, n, tok(n.Ellipsis), nod(n.Elt))
+		ok = tokenvisit1(visit, n, tok(n.Ellipsis), nod(n.Elt))
 	case *ast.EmptyStmt:
 		panic("what do?")
 	case *ast.ExprStmt:
-		tokenVisit1(visit, n, nod(n.X))
+		ok = tokenvisit1(visit, n, nod(n.X))
 	case *ast.Field:
-		tokenVisit1(visit, n, delimList(n.Names), nod(n.Type), nod(n.Tag))
+		ok = tokenvisit1(visit, n, delimList(n.Names), nod(n.Type), nod(n.Tag))
 	case *ast.FieldList:
 		panic("missed fieldlist")
 	case *ast.File:
-		tokenVisit1(visit, n, tok(n.Package), nod(n.Name), list(n.Decls))
+		ok = tokenvisit1(visit, n, tok(n.Package), nod(n.Name), list(n.Decls))
 	case *ast.ForStmt:
-		tokenVisit1(visit, n,
+		ok = tokenvisit1(visit, n,
 			tok(n.For),
 			opt(n.Init, tok(token.SEMICOLON)),
 			nod(n.Cond),
@@ -204,7 +223,7 @@ func tokenVisit(n ast.Node, visit func(ast.Node)) {
 
 	case *ast.FuncDecl:
 		// figure out how these work with cursor ranges.
-		tokenVisit1(visit, n,
+		ok = tokenvisit1(visit, n,
 			tok(n.Type.Func),
 			fieldlist(n.Recv, false),
 			nod(n.Name),
@@ -214,70 +233,71 @@ func tokenVisit(n ast.Node, visit func(ast.Node)) {
 			nod(n.Body),
 		)
 	case *ast.GenDecl:
-		tokenVisit1(visit, n, tok(n.TokPos), tok(n.Lparen), list(n.Specs), tok(n.Rparen))
+		ok = tokenvisit1(visit, n, tok(n.TokPos), tok(n.Lparen), list(n.Specs), tok(n.Rparen))
 	case *ast.GoStmt:
-		tokenVisit1(visit, n, tok(n.Go), nod(n.Call))
+		ok = tokenvisit1(visit, n, tok(n.Go), nod(n.Call))
 	case *ast.Ident:
-		tokenVisit1(visit, n, tok(n.NamePos))
+		ok = tokenvisit1(visit, n, tok(n.NamePos))
 	case *ast.IfStmt:
-		tokenVisit1(visit, n, tok(n.If), opt(n.Init, tok(token.SEMICOLON)), nod(n.Cond), nod(n.Body), nod(n.Else))
+		ok = tokenvisit1(visit, n, tok(n.If), opt(n.Init, tok(token.SEMICOLON)), nod(n.Cond), nod(n.Body), nod(n.Else))
 	case *ast.IncDecStmt:
-		tokenVisit1(visit, n, nod(n.X), tok(n.TokPos))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.TokPos))
 	case *ast.IndexExpr:
-		tokenVisit1(visit, n, nod(n.X), tok(n.Lbrack), nod(n.Index), tok(n.Rbrack))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack), nod(n.Index), tok(n.Rbrack))
 	case *ast.IndexListExpr:
-		tokenVisit1(visit, n, nod(n.X), tok(n.Lbrack), delimList(n.Indices), tok(n.Rbrack))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack), delimList(n.Indices), tok(n.Rbrack))
 	case *ast.InterfaceType:
-		tokenVisit1(visit, n, tok(n.Interface), fieldlist(n.Methods, false))
+		ok = tokenvisit1(visit, n, tok(n.Interface), fieldlist(n.Methods, false))
 	case *ast.KeyValueExpr:
-		tokenVisit1(visit, n, nod(n.Key), tok(n.Colon), nod(n.Value))
+		ok = tokenvisit1(visit, n, nod(n.Key), tok(n.Colon), nod(n.Value))
 	case *ast.LabeledStmt:
-		tokenVisit1(visit, n, nod(n.Label), tok(n.Colon), nod(n.Stmt))
+		ok = tokenvisit1(visit, n, nod(n.Label), tok(n.Colon), nod(n.Stmt))
 	case *ast.MapType:
-		tokenVisit1(visit, n, tok(n.Map), tok(token.LBRACK), nod(n.Key), tok(token.RBRACK), nod(n.Value))
+		ok = tokenvisit1(visit, n, tok(n.Map), tok(token.LBRACK), nod(n.Key), tok(token.RBRACK), nod(n.Value))
 	case *ast.ParenExpr:
-		tokenVisit1(visit, n, tok(n.Lparen), nod(n.X), tok(n.Rparen))
+		ok = tokenvisit1(visit, n, tok(n.Lparen), nod(n.X), tok(n.Rparen))
 	case *ast.RangeStmt:
 		if n.Value != nil {
-			tokenVisit1(visit, n, tok(n.For), nod(n.Key), tok(token.COMMA), nod(n.Value), tok(n.TokPos))
+			ok = tokenvisit1(visit, n, tok(n.For), nod(n.Key), tok(token.COMMA), nod(n.Value), tok(n.TokPos))
 		} else {
-			tokenVisit1(visit, n, tok(n.For), nod(n.Key), tok(n.TokPos))
+			ok = tokenvisit1(visit, n, tok(n.For), nod(n.Key), tok(n.TokPos))
 		}
-		tokenVisit1(visit, n, tok(n.Range), nod(n.X), nod(n.Body))
+		ok = ok && tokenvisit1(visit, n, tok(n.Range), nod(n.X), nod(n.Body))
 	case *ast.ReturnStmt:
-		tokenVisit1(visit, n, tok(n.Return), delimList(n.Results))
+		ok = tokenvisit1(visit, n, tok(n.Return), delimList(n.Results))
 	case *ast.SelectStmt:
-		tokenVisit1(visit, n, tok(n.Select), nod(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Select), nod(n.Body))
 	case *ast.SelectorExpr:
-		tokenVisit1(visit, n, nod(n.X), tok(token.PERIOD), nod(n.Sel))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(token.PERIOD), nod(n.Sel))
 	case *ast.SendStmt:
-		tokenVisit1(visit, n, nod(n.Chan), tok(n.Arrow), nod(n.Value))
+		ok = tokenvisit1(visit, n, nod(n.Chan), tok(n.Arrow), nod(n.Value))
 	case *ast.SliceExpr:
-		tokenVisit1(visit, n, nod(n.X), tok(n.Lbrack), nod(n.Low), tok(token.COLON), nod(n.High))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack), nod(n.Low), tok(token.COLON), nod(n.High))
 		if n.Slice3 {
-			tokenVisit1(visit, n, tok(token.SEMICOLON), nod(n.High))
+			ok = ok && tokenvisit1(visit, n, tok(token.SEMICOLON), nod(n.High))
 		}
-		tokenVisit1(visit, n, tok(n.Rbrack))
+		ok = ok && tokenvisit1(visit, n, tok(n.Rbrack))
 	case *ast.StarExpr:
-		tokenVisit1(visit, n, tok(n.Star), nod(n.X))
+		ok = tokenvisit1(visit, n, tok(n.Star), nod(n.X))
 	case *ast.StructType:
-		tokenVisit1(visit, n, tok(n.Struct), fieldlist(n.Fields, false))
+		ok = tokenvisit1(visit, n, tok(n.Struct), fieldlist(n.Fields, false))
 	case *ast.SwitchStmt:
-		tokenVisit1(visit, n, tok(n.Switch), opt(n.Init, tok(token.SEMICOLON)), nod(n.Tag), nod(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Switch), opt(n.Init, tok(token.SEMICOLON)), nod(n.Tag), nod(n.Body))
 	case *ast.TypeAssertExpr:
-		tokenVisit1(visit, n, nod(n.X), tok(token.PERIOD), tok(n.Lparen), nod(n.Type), tok(n.Rparen))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(token.PERIOD), tok(n.Lparen), nod(n.Type), tok(n.Rparen))
 	case *ast.TypeSpec:
-		tokenVisit1(visit, n, nod(n.Name), fieldlist(n.TypeParams, true), tok(n.Assign), nod(n.Type))
+		ok = tokenvisit1(visit, n, nod(n.Name), fieldlist(n.TypeParams, true), tok(n.Assign), nod(n.Type))
 	case *ast.TypeSwitchStmt:
-		tokenVisit1(visit, n, tok(n.Switch), opt(n.Init, tok(token.SEMICOLON)), nod(n.Assign), nod(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Switch), opt(n.Init, tok(token.SEMICOLON)), nod(n.Assign), nod(n.Body))
 	case *ast.ValueSpec:
-		tokenVisit1(visit, n, delimList(n.Names), nod(n.Type), delimList(n.Values))
+		ok = tokenvisit1(visit, n, delimList(n.Names), nod(n.Type), delimList(n.Values))
 	default:
 		panic("unhandled node")
 	}
+	return ok
 }
 
-func tokenVisit1(visit func(ast.Node), parent ast.Node, components ...[]ast.Node) {
+func tokenvisit1(visit func(ast.Node) bool, parent ast.Node, components ...[]ast.Node) bool {
 	var r []ast.Node
 	for _, c := range components {
 		r = append(r, c...)
@@ -285,11 +305,16 @@ func tokenVisit1(visit func(ast.Node), parent ast.Node, components ...[]ast.Node
 	for _, n := range r {
 		switch n.(type) {
 		case nodeToken:
-			visit(parent)
+			if !visit(parent) {
+				return false
+			}
 		case ast.Node:
-			tokenVisit(n, visit)
+			if !tokVisit(n, visit) {
+				return false
+			}
 		}
 	}
+	return true
 }
 
 func fieldlist(f *ast.FieldList, tokenbetween bool) []ast.Node {
@@ -401,10 +426,10 @@ func clearComments(root inspector.Cursor) {
 }
 
 func (r *commentRange) findCursors(cur inspector.Cursor) {
-	r.prevCursor, _ = cur.FindByPos(r.prevToken, r.prevToken)
-	r.nextCursor, _ = cur.FindByPos(r.nextToken, r.nextToken)
+	r.prevCursor, _ = cur.FindByPos(r.prevPos, r.prevPos)
+	r.nextCursor, _ = cur.FindByPos(r.nextPos, r.nextPos)
 
-	if f, ok := r.prevCursor.Node().(*ast.File); ok && r.prevToken < f.Package {
+	if f, ok := r.prevCursor.Node().(*ast.File); ok && r.prevPos < f.Package {
 		r.prevCursor = cur.Inspector().Root()
 	}
 }
@@ -442,21 +467,21 @@ type commentRange struct {
 	comment    *ast.CommentGroup
 	prevCursor inspector.Cursor
 	nextCursor inspector.Cursor
-	prevToken  token.Pos
-	nextToken  token.Pos
+	prevPos    token.Pos
+	nextPos    token.Pos
 }
 
 func (r *commentRange) String() string {
 	var b strings.Builder
 	fmt.Fprintln(&b, line(r.comment))
-	fmt.Fprintf(&b, "\tprev %s\n", line(r.prevToken))
+	fmt.Fprintf(&b, "\tprev %s\n", line(r.prevPos))
 	cursorstr := "<ROOT>"
 	cNode := r.prevCursor.Node()
 	if cNode != nil {
 		cursorstr = fmt.Sprintf("%T %s", cNode, line(cNode))
 	}
 	fmt.Fprintf(&b, "\tprev Cursor %s\n", cursorstr)
-	fmt.Fprintf(&b, "\tnext %s\n", line(r.nextToken))
+	fmt.Fprintf(&b, "\tnext %s\n", line(r.nextPos))
 	fmt.Fprintf(&b, "\tnext Cursor %T %s\n", r.nextCursor.Node(), line(r.nextCursor.Node()))
 
 	return b.String()
