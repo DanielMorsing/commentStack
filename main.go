@@ -25,6 +25,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -118,9 +119,13 @@ func main() {
 			cfg.Fprint(os.Stdout, fset, f)
 		}
 	case "shuffle":
+		clearComments(root)
 		for _, f := range files {
-			fileCur, _ := root.FindNode(f)
-			shuffleFunc(fileCur)
+			//fileCur, _ := root.FindNode(f)
+			//shuffleFunc(fileCur)
+			printOrder(f, func(n ast.Node) {
+				fmt.Printf("%T, %s\n", n, line(n))
+			})
 			cfg := printer.Config{
 				Mode:     0,
 				Tabwidth: 8,
@@ -129,7 +134,6 @@ func main() {
 			cfg.Fprint(os.Stdout, fset, f)
 		}
 	}
-
 }
 
 func shuffleFunc(fileCur inspector.Cursor) {
@@ -148,6 +152,185 @@ func shuffleFunc(fileCur inspector.Cursor) {
 		}
 		fnsn.Body.List = newBody
 	}
+}
+
+func printOrder(node ast.Node, visit func(ast.Node)) {
+	ast.Inspect(node, adaptInspect(visit))
+}
+
+func adaptInspect(visit func(ast.Node)) func(n ast.Node) bool {
+	return func(n ast.Node) bool {
+		if n == nil {
+			return false
+		}
+		if printVisit(visit, n) {
+			return false
+		}
+		visit(n)
+		return true
+	}
+}
+
+func printVisit(visit func(ast.Node), n ast.Node) bool {
+	switch n := n.(type) {
+	case *ast.ArrayType:
+		printVisit1(visit, n, tok(n.Lbrack), tok(token.RBRACK), nod(n.Len), nod(n.Elt))
+	case *ast.AssignStmt:
+		printVisit1(visit, n, delimList(n.Lhs), tok(n.Tok), delimList(n.Rhs))
+	case *ast.BasicLit:
+		printVisit1(visit, n, tok(n.Kind))
+	case *ast.BinaryExpr:
+		printVisit1(visit, n, nod(n.X), tok(n.Op), nod(n.Y))
+	case *ast.BlockStmt:
+		printVisit1(visit, n, tok(n.Lbrace), list(n.List), tok(n.Rbrace))
+	case *ast.BranchStmt:
+		printVisit1(visit, n, tok(n.Tok), nod(n.Label))
+	case *ast.CallExpr:
+		printVisit1(visit, n, nod(n.Fun), tok(n.Lparen), delimList(n.Args), tok(n.Ellipsis), tok(n.Rparen))
+	case *ast.CaseClause:
+		printVisit1(visit, n, tok(n.Case), delimList(n.List), tok(n.Colon), list(n.Body))
+	case *ast.ChanType:
+		printVisit1(visit, n, tok(n.Begin), tok(n.Arrow), nod(n.Value))
+	case *ast.CommClause:
+		printVisit1(visit, n, tok(n.Case), nod(n.Comm), tok(n.Colon), list(n.Body))
+	case *ast.CompositeLit:
+		printVisit1(visit, n, nod(n.Type), tok(n.Lbrace), delimList(n.Elts), tok(n.Rbrace))
+	case *ast.DeclStmt:
+		printVisit1(visit, n, nod(n.Decl))
+	case *ast.DeferStmt:
+		printVisit1(visit, n, tok(n.Defer), nod(n.Call))
+	case *ast.Ellipsis:
+		printVisit1(visit, n, tok(n.Ellipsis), nod(n.Elt))
+	case *ast.EmptyStmt:
+		panic("what do?")
+	case *ast.ExprStmt:
+		printVisit1(visit, n, nod(n.X))
+	case *ast.Field:
+		printVisit1(visit, n, delimList(n.Names), nod(n.Type), nod(n.Tag))
+	case *ast.FieldList:
+		panic("missed fieldlist")
+	case *ast.File:
+		printVisit1(visit, n, tok(n.Package), nod(n.Name), list(n.Decls))
+	case *ast.ForStmt:
+		printVisit1(visit, n,
+			tok(n.For),
+			opt(n.Init, tok(token.SEMICOLON)),
+			nod(n.Cond),
+			opt(n.Post, tok(token.SEMICOLON)),
+			nod(n.Body))
+
+	case *ast.FuncDecl:
+		// figure out how these work with cursor ranges.
+		printVisit1(visit, n,
+			tok(n.Type.Func),
+			fieldlist(n.Recv, false),
+			nod(n.Name),
+			fieldlist(n.Type.TypeParams, true),
+			fieldlist(n.Type.Params, true),
+			fieldlist(n.Type.Results, true),
+			nod(n.Body),
+		)
+	case *ast.IfStmt:
+		printVisit1(visit, n, tok(n.If), opt(n.Init, tok(token.SEMICOLON)), nod(n.Cond), nod(n.Body), nod(n.Else))
+	default:
+		return false
+	}
+	return true
+}
+
+func printVisit1(visit func(ast.Node), parent ast.Node, components ...[]ast.Node) {
+	var r []ast.Node
+	for _, c := range components {
+		r = append(r, c...)
+	}
+	for _, n := range r {
+		switch n.(type) {
+		case nodeToken:
+			visit(parent)
+		case ast.Node:
+			if !printVisit(visit, n) {
+				ast.Inspect(n, adaptInspect(visit))
+			}
+		}
+	}
+}
+
+func fieldlist(f *ast.FieldList, tokenbetween bool) []ast.Node {
+	if f == nil {
+		return nil
+	}
+	listFunc := list[[]*ast.Field]
+	if tokenbetween {
+		listFunc = delimList[[]*ast.Field]
+	}
+	r := make([]ast.Node, 0, len(f.List)+2)
+	r = append(r, tok(f.Opening)...)
+	r = append(r, listFunc(f.List)...)
+	r = append(r, tok(f.Closing)...)
+	return r
+}
+
+type nodeToken struct{}
+
+func (n nodeToken) Pos() token.Pos { panic("call to position") }
+func (n nodeToken) End() token.Pos { panic("call to end position") }
+
+func nod(n ast.Node) []ast.Node {
+	if isZero(n) {
+		return nil
+	}
+	return []ast.Node{n}
+}
+
+func tok(t any) []ast.Node {
+	switch n := t.(type) {
+	case token.Pos:
+		if !n.IsValid() {
+			return nil
+		}
+	case token.Token:
+		if n == token.ILLEGAL {
+			return nil
+		}
+	default:
+		panic("bad tok")
+	}
+	return []ast.Node{nodeToken{}}
+}
+
+func opt(n ast.Node, delim []ast.Node) []ast.Node {
+	if isZero(n) {
+		return nil
+	}
+	ret := make([]ast.Node, 0, len(delim)+1)
+	ret = append(ret, n)
+	return append(ret, delim...)
+}
+
+func delimList[S ~[]E, E ast.Node](l S) []ast.Node {
+	if len(l) == 0 {
+		return nil
+	}
+	r := make([]ast.Node, 0, 2*len(l)-1)
+	for i, n := range l {
+		r = append(r, n)
+		if i != len(l)-1 {
+			r = append(r, nodeToken{})
+		}
+	}
+	return r
+}
+
+func list[S ~[]E, E ast.Node](l S) []ast.Node {
+	var r []ast.Node
+	for _, n := range l {
+		r = append(r, n)
+	}
+	return r
+}
+
+func isZero(n ast.Node) bool {
+	return n == nil || reflect.ValueOf(n).IsZero()
 }
 
 func clearComments(root inspector.Cursor) {

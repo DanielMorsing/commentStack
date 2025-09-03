@@ -10,9 +10,10 @@ func foobar() bool {
 var a, b bool
 
 func x() {
-	if x /*inside if*/ {
+	if x = x; ok /*inside if*/ {
 
 	}
+	test, foobar = foobar, test
 	switch {
 	case foobar() /* caseclause */, a || b:
 		stmt()
