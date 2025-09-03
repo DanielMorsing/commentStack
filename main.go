@@ -170,9 +170,7 @@ type Token struct {
 
 func tokenOrder(root ast.Node) iter.Seq[Token] {
 	return func(yield func(Token) bool) {
-		tokVisit(root, func(t Token) bool {
-			return yield(t)
-		})
+		tokVisit(root, yield)
 	}
 }
 
