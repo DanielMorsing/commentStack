@@ -275,6 +275,9 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 		if n.Else != nil {
 			ok = ok && tokenvisit1(visit, n, tok(UnknownPos, token.ELSE), nod(n.Else))
 		}
+	case *ast.ImportSpec:
+		// TODO(dmo): how does n.EndPos, work here?
+		ok = tokenvisit1(visit, n, nod(n.Name), nod(n.Path))
 	case *ast.IncDecStmt:
 		ok = tokenvisit1(visit, n, nod(n.X), tok(n.TokPos, n.Tok))
 	case *ast.IndexExpr:
@@ -324,6 +327,8 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 		ok = tokenvisit1(visit, n, nod(n.Name), fieldlist(n.TypeParams, token.LBRACE, token.COMMA, token.RBRACE), tok(n.Assign, token.ASSIGN), nod(n.Type))
 	case *ast.TypeSwitchStmt:
 		ok = tokenvisit1(visit, n, tok(n.Switch, token.SWITCH), opt(n.Init, tok(UnknownPos, token.SEMICOLON)), nod(n.Assign), nod(n.Body))
+	case *ast.UnaryExpr:
+		ok = tokenvisit1(visit, n, tok(n.OpPos, n.Op), nod(n.X))
 	case *ast.ValueSpec:
 		ok = tokenvisit1(visit, n, list(n.Names, token.COMMA), nod(n.Type), list(n.Values, token.COMMA))
 	default:
