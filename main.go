@@ -195,9 +195,15 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 	case *ast.CaseClause:
 		ok = tokenvisit1(visit, n, tok(n.Case, token.CASE), list(n.List, token.COMMA), tok(n.Colon, token.COLON), list(n.Body, token.ILLEGAL))
 	case *ast.ChanType:
-		// TODO(dmo): deal with this
-		panic("chantype :(")
-		//ok = tokenvisit1(visit, n, tok(n.Begin), tok(n.Arrow), nod(n.Value))
+		switch n.Dir {
+		case ast.RECV | ast.SEND:
+			ok = tokenvisit1(visit, n, tok(n.Begin, token.CHAN))
+		case ast.RECV:
+			ok = tokenvisit1(visit, n, tok(n.Begin, token.ARROW), tok(UnknownPos, token.CHAN))
+		case ast.SEND:
+			ok = tokenvisit1(visit, n, tok(UnknownPos, token.CHAN), tok(n.Arrow, token.ARROW))
+		}
+		ok = ok && tokenvisit1(visit, n, nod(n.Value))
 	case *ast.CommClause:
 		t := token.CASE
 		if n.Comm == nil {
@@ -213,7 +219,11 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 	case *ast.Ellipsis:
 		ok = tokenvisit1(visit, n, tok(n.Ellipsis, token.ELLIPSIS), nod(n.Elt))
 	case *ast.EmptyStmt:
-		panic("what do?")
+		if n.Implicit {
+			ok = true
+		} else {
+			ok = tokenvisit1(visit, n, tok(n.Semicolon, token.SEMICOLON))
+		}
 	case *ast.ExprStmt:
 		ok = tokenvisit1(visit, n, nod(n.X))
 	case *ast.Field:
@@ -231,16 +241,23 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 			nod(n.Body))
 
 	case *ast.FuncDecl:
-		// figure out how these work with cursor ranges.
+		// TODO(dmo): explain what's up with the strange ranges of
+		// funcdecls and functypes
 		ok = tokenvisit1(visit, n,
 			tok(n.Type.Func, token.FUNC),
 			fieldlist(n.Recv, token.LPAREN, token.COMMA, token.RPAREN),
-			nod(n.Name),
-			fieldlist(n.Type.TypeParams, token.LBRACK, token.COMMA, token.RBRACK),
-			fieldlist(n.Type.Params, token.LPAREN, token.COMMA, token.RPAREN),
-			fieldlist(n.Type.Results, token.LPAREN, token.COMMA, token.RPAREN),
-			nod(n.Body),
-		)
+			nod(n.Name))
+		ok = ok && tokenvisit1(visit, n.Type.TypeParams, fieldlist(n.Type.TypeParams, token.LBRACK, token.COMMA, token.RBRACK))
+		ok = ok && tokenvisit1(visit, n.Type.Params, fieldlist(n.Type.Params, token.LPAREN, token.COMMA, token.RPAREN))
+		ok = ok && tokenvisit1(visit, n.Type.Results, fieldlist(n.Type.Results, token.LPAREN, token.COMMA, token.RPAREN))
+		ok = ok && tokenvisit1(visit, n, nod(n.Body))
+	case *ast.FuncType:
+		ok = tokenvisit1(visit, n, tok(n.Func, token.FUNC))
+		ok = ok && tokenvisit1(visit, n.TypeParams, fieldlist(n.TypeParams, token.LBRACK, token.COMMA, token.RBRACK))
+		ok = ok && tokenvisit1(visit, n.Params, fieldlist(n.Params, token.LPAREN, token.COMMA, token.RPAREN))
+		ok = ok && tokenvisit1(visit, n.Results, fieldlist(n.Results, token.LPAREN, token.COMMA, token.RPAREN))
+	case *ast.FuncLit:
+		ok = tokenvisit1(visit, n, nod(n.Type), nod(n.Body))
 	case *ast.GenDecl:
 		ok = tokenvisit1(visit, n, tok(n.TokPos, n.Tok), tok(n.Lparen, token.LPAREN), list(n.Specs, token.ILLEGAL), tok(n.Rparen, token.RPAREN))
 	case *ast.GoStmt:
@@ -282,8 +299,7 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 	case *ast.SelectorExpr:
 		ok = tokenvisit1(visit, n, nod(n.X), tok(UnknownPos, token.PERIOD), nod(n.Sel))
 	case *ast.SendStmt:
-		panic("sendstmt")
-		//ok = tokenvisit1(visit, n, nod(n.Chan), tok(n.Arrow), nod(n.Value))
+		ok = tokenvisit1(visit, n, nod(n.Chan), tok(n.Arrow, token.ARROW), nod(n.Value))
 	case *ast.SliceExpr:
 		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack, token.LBRACK), nod(n.Low), tok(UnknownPos, token.COLON), nod(n.High))
 		if n.Slice3 {
