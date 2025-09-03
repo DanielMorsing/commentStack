@@ -61,6 +61,7 @@ func main() {
 		scan.Init(fset.File(file.Package), srcs[fileidx], nil, 0)
 		cmtIdx := 0
 		prevPos := file.FileStart
+		prevToken := token.ILLEGAL
 		for cmtIdx < len(file.Comments) {
 			cmt := file.Comments[cmtIdx]
 			pos, tok, lit := scan.Scan()
@@ -70,8 +71,12 @@ func main() {
 			for cmt.End() <= pos {
 				ranges = append(ranges, &commentRange{
 					comment: cmt,
+
 					prevPos: prevPos,
+					prevTok: prevToken,
+
 					nextPos: pos,
+					nextTok: tok,
 				})
 				cmtIdx += 1
 				if cmtIdx == len(file.Comments) {
@@ -85,6 +90,7 @@ func main() {
 			default:
 				prevPos = pos + token.Pos(len(tok.String()))
 			}
+			prevToken = tok
 			if tok == token.EOF {
 				panic("reached eof before end of comments (how??)")
 			}
@@ -493,19 +499,21 @@ type commentRange struct {
 	nextCursor inspector.Cursor
 	prevPos    token.Pos
 	nextPos    token.Pos
+	prevTok    token.Token
+	nextTok    token.Token
 }
 
 func (r *commentRange) String() string {
 	var b strings.Builder
 	fmt.Fprintln(&b, line(r.comment))
-	fmt.Fprintf(&b, "\tprev %s\n", line(r.prevPos))
+	fmt.Fprintf(&b, "\tprev %s %s\n", line(r.prevPos), r.prevTok)
 	cursorstr := "<ROOT>"
 	cNode := r.prevCursor.Node()
 	if cNode != nil {
 		cursorstr = fmt.Sprintf("%T %s", cNode, line(cNode))
 	}
 	fmt.Fprintf(&b, "\tprev Cursor %s\n", cursorstr)
-	fmt.Fprintf(&b, "\tnext %s\n", line(r.nextPos))
+	fmt.Fprintf(&b, "\tnext %s %s\n", line(r.nextPos), r.nextTok)
 	fmt.Fprintf(&b, "\tnext Cursor %T %s\n", r.nextCursor.Node(), line(r.nextCursor.Node()))
 
 	return b.String()
