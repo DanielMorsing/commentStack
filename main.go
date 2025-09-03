@@ -125,7 +125,7 @@ func main() {
 			//fileCur, _ := root.FindNode(f)
 			//shuffleFunc(fileCur)
 			for t := range tokenOrder(f) {
-				fmt.Printf("%T %s\n", t.Node, line(t.Node))
+				fmt.Printf("%T %s %s\n", t.Node, line(t.Pos), t.Tok)
 			}
 			cfg := printer.Config{
 				Mode:     0,
@@ -158,154 +158,176 @@ func shuffleFunc(fileCur inspector.Cursor) {
 // TODO(dmo): better name
 type Token struct {
 	Node ast.Node
-	Pos  token.Position
+	Pos  token.Pos
 	Tok  token.Token
 }
 
 func tokenOrder(root ast.Node) iter.Seq[Token] {
 	return func(yield func(Token) bool) {
-		tokVisit(root, func(n ast.Node) bool {
-			return yield(Token{
-				Node: n,
-			})
+		tokVisit(root, func(t Token) bool {
+			return yield(t)
 		})
 	}
 }
 
-func tokVisit(n ast.Node, visit func(ast.Node) bool) bool {
+// in the case where we have no position for a token
+// but we know it exists, use this
+const UnknownPos token.Pos = -1
+
+func tokVisit(n ast.Node, visit func(Token) bool) bool {
 	ok := true
 	switch n := n.(type) {
 	case *ast.ArrayType:
-		ok = tokenvisit1(visit, n, tok(n.Lbrack), tok(token.RBRACK), nod(n.Len), nod(n.Elt))
+		// Don't have a token position for
+		ok = tokenvisit1(visit, n, tok(n.Lbrack, token.LBRACK), tok(UnknownPos, token.RBRACK), nod(n.Len), nod(n.Elt))
 	case *ast.AssignStmt:
-		ok = tokenvisit1(visit, n, delimList(n.Lhs), tok(n.Tok), delimList(n.Rhs))
+		ok = tokenvisit1(visit, n, list(n.Lhs, token.COMMA), tok(n.TokPos, n.Tok), list(n.Rhs, token.COMMA))
 	case *ast.BasicLit:
-		ok = tokenvisit1(visit, n, tok(n.Kind))
+		ok = tokenvisit1(visit, n, tok(n.ValuePos, n.Kind))
 	case *ast.BinaryExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Op), nod(n.Y))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.OpPos, n.Op), nod(n.Y))
 	case *ast.BlockStmt:
-		ok = tokenvisit1(visit, n, tok(n.Lbrace), list(n.List), tok(n.Rbrace))
+		ok = tokenvisit1(visit, n, tok(n.Lbrace, token.LBRACE), list(n.List, token.ILLEGAL), tok(n.Rbrace, token.RBRACE))
 	case *ast.BranchStmt:
-		ok = tokenvisit1(visit, n, tok(n.Tok), nod(n.Label))
+		ok = tokenvisit1(visit, n, tok(n.TokPos, n.Tok), nod(n.Label))
 	case *ast.CallExpr:
-		ok = tokenvisit1(visit, n, nod(n.Fun), tok(n.Lparen), delimList(n.Args), tok(n.Ellipsis), tok(n.Rparen))
+		ok = tokenvisit1(visit, n, nod(n.Fun), tok(n.Lparen, token.LPAREN), list(n.Args, token.COMMA), tok(n.Ellipsis, token.ELLIPSIS), tok(n.Rparen, token.RPAREN))
 	case *ast.CaseClause:
-		ok = tokenvisit1(visit, n, tok(n.Case), delimList(n.List), tok(n.Colon), list(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Case, token.CASE), list(n.List, token.COMMA), tok(n.Colon, token.COLON), list(n.Body, token.ILLEGAL))
 	case *ast.ChanType:
-		ok = tokenvisit1(visit, n, tok(n.Begin), tok(n.Arrow), nod(n.Value))
+		// TODO(dmo): deal with this
+		panic("chantype :(")
+		//ok = tokenvisit1(visit, n, tok(n.Begin), tok(n.Arrow), nod(n.Value))
 	case *ast.CommClause:
-		ok = tokenvisit1(visit, n, tok(n.Case), nod(n.Comm), tok(n.Colon), list(n.Body))
+		t := token.CASE
+		if n.Comm == nil {
+			t = token.DEFAULT
+		}
+		ok = tokenvisit1(visit, n, tok(n.Case, t), nod(n.Comm), tok(n.Colon, token.COLON), list(n.Body, token.ILLEGAL))
 	case *ast.CompositeLit:
-		ok = tokenvisit1(visit, n, nod(n.Type), tok(n.Lbrace), delimList(n.Elts), tok(n.Rbrace))
+		ok = tokenvisit1(visit, n, nod(n.Type), tok(n.Lbrace, token.LBRACE), list(n.Elts, token.COMMA), tok(n.Rbrace, token.RBRACE))
 	case *ast.DeclStmt:
 		ok = tokenvisit1(visit, n, nod(n.Decl))
 	case *ast.DeferStmt:
-		ok = tokenvisit1(visit, n, tok(n.Defer), nod(n.Call))
+		ok = tokenvisit1(visit, n, tok(n.Defer, token.DEFER), nod(n.Call))
 	case *ast.Ellipsis:
-		ok = tokenvisit1(visit, n, tok(n.Ellipsis), nod(n.Elt))
+		ok = tokenvisit1(visit, n, tok(n.Ellipsis, token.ELLIPSIS), nod(n.Elt))
 	case *ast.EmptyStmt:
 		panic("what do?")
 	case *ast.ExprStmt:
 		ok = tokenvisit1(visit, n, nod(n.X))
 	case *ast.Field:
-		ok = tokenvisit1(visit, n, delimList(n.Names), nod(n.Type), nod(n.Tag))
+		ok = tokenvisit1(visit, n, list(n.Names, token.COMMA), nod(n.Type), nod(n.Tag))
 	case *ast.FieldList:
 		panic("missed fieldlist")
 	case *ast.File:
-		ok = tokenvisit1(visit, n, tok(n.Package), nod(n.Name), list(n.Decls))
+		ok = tokenvisit1(visit, n, tok(n.Package, token.PACKAGE), nod(n.Name), list(n.Decls, token.ILLEGAL))
 	case *ast.ForStmt:
 		ok = tokenvisit1(visit, n,
-			tok(n.For),
-			opt(n.Init, tok(token.SEMICOLON)),
+			tok(n.For, token.FOR),
+			opt(n.Init, tok(UnknownPos, token.SEMICOLON)),
 			nod(n.Cond),
-			opt(n.Post, tok(token.SEMICOLON)),
+			opt(n.Post, tok(UnknownPos, token.SEMICOLON)),
 			nod(n.Body))
 
 	case *ast.FuncDecl:
 		// figure out how these work with cursor ranges.
 		ok = tokenvisit1(visit, n,
-			tok(n.Type.Func),
-			fieldlist(n.Recv, false),
+			tok(n.Type.Func, token.FUNC),
+			fieldlist(n.Recv, token.LPAREN, token.COMMA, token.RPAREN),
 			nod(n.Name),
-			fieldlist(n.Type.TypeParams, true),
-			fieldlist(n.Type.Params, true),
-			fieldlist(n.Type.Results, true),
+			fieldlist(n.Type.TypeParams, token.LBRACK, token.COMMA, token.RBRACK),
+			fieldlist(n.Type.Params, token.LPAREN, token.COMMA, token.RPAREN),
+			fieldlist(n.Type.Results, token.LPAREN, token.COMMA, token.RPAREN),
 			nod(n.Body),
 		)
 	case *ast.GenDecl:
-		ok = tokenvisit1(visit, n, tok(n.TokPos), tok(n.Lparen), list(n.Specs), tok(n.Rparen))
+		ok = tokenvisit1(visit, n, tok(n.TokPos, n.Tok), tok(n.Lparen, token.LPAREN), list(n.Specs, token.ILLEGAL), tok(n.Rparen, token.RPAREN))
 	case *ast.GoStmt:
-		ok = tokenvisit1(visit, n, tok(n.Go), nod(n.Call))
+		ok = tokenvisit1(visit, n, tok(n.Go, token.GO), nod(n.Call))
 	case *ast.Ident:
-		ok = tokenvisit1(visit, n, tok(n.NamePos))
+		ok = tokenvisit1(visit, n, tok(n.NamePos, token.IDENT))
 	case *ast.IfStmt:
-		ok = tokenvisit1(visit, n, tok(n.If), opt(n.Init, tok(token.SEMICOLON)), nod(n.Cond), nod(n.Body), nod(n.Else))
+		ok = tokenvisit1(visit, n, tok(n.If, token.IF), opt(n.Init, tok(UnknownPos, token.SEMICOLON)), nod(n.Cond), nod(n.Body))
+		if n.Else != nil {
+			ok = ok && tokenvisit1(visit, n, tok(UnknownPos, token.ELSE), nod(n.Else))
+		}
 	case *ast.IncDecStmt:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(n.TokPos))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.TokPos, n.Tok))
 	case *ast.IndexExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack), nod(n.Index), tok(n.Rbrack))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack, token.LBRACK), nod(n.Index), tok(n.Rbrack, token.RBRACK))
 	case *ast.IndexListExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack), delimList(n.Indices), tok(n.Rbrack))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack, token.LBRACK), list(n.Indices, token.COMMA), tok(n.Rbrack, token.RBRACK))
 	case *ast.InterfaceType:
-		ok = tokenvisit1(visit, n, tok(n.Interface), fieldlist(n.Methods, false))
+		ok = tokenvisit1(visit, n, tok(n.Interface, token.INTERFACE), fieldlist(n.Methods, token.LBRACE, token.ILLEGAL, token.RBRACE))
 	case *ast.KeyValueExpr:
-		ok = tokenvisit1(visit, n, nod(n.Key), tok(n.Colon), nod(n.Value))
+		ok = tokenvisit1(visit, n, nod(n.Key), tok(n.Colon, token.COLON), nod(n.Value))
 	case *ast.LabeledStmt:
-		ok = tokenvisit1(visit, n, nod(n.Label), tok(n.Colon), nod(n.Stmt))
+		ok = tokenvisit1(visit, n, nod(n.Label), tok(n.Colon, token.COLON), nod(n.Stmt))
 	case *ast.MapType:
-		ok = tokenvisit1(visit, n, tok(n.Map), tok(token.LBRACK), nod(n.Key), tok(token.RBRACK), nod(n.Value))
+		ok = tokenvisit1(visit, n, tok(n.Map, token.MAP), tok(UnknownPos, token.LBRACK), nod(n.Key), tok(UnknownPos, token.RBRACK), nod(n.Value))
 	case *ast.ParenExpr:
-		ok = tokenvisit1(visit, n, tok(n.Lparen), nod(n.X), tok(n.Rparen))
+		ok = tokenvisit1(visit, n, tok(n.Lparen, token.LPAREN), nod(n.X), tok(n.Rparen, token.RPAREN))
 	case *ast.RangeStmt:
 		if n.Value != nil {
-			ok = tokenvisit1(visit, n, tok(n.For), nod(n.Key), tok(token.COMMA), nod(n.Value), tok(n.TokPos))
+			ok = tokenvisit1(visit, n, tok(n.For, token.FOR), nod(n.Key), tok(UnknownPos, token.COMMA), nod(n.Value), tok(n.TokPos, n.Tok))
 		} else {
-			ok = tokenvisit1(visit, n, tok(n.For), nod(n.Key), tok(n.TokPos))
+			ok = tokenvisit1(visit, n, tok(n.For, token.FOR), nod(n.Key), tok(n.TokPos, n.Tok))
 		}
-		ok = ok && tokenvisit1(visit, n, tok(n.Range), nod(n.X), nod(n.Body))
+		ok = ok && tokenvisit1(visit, n, tok(n.Range, token.RANGE), nod(n.X), nod(n.Body))
 	case *ast.ReturnStmt:
-		ok = tokenvisit1(visit, n, tok(n.Return), delimList(n.Results))
+		ok = tokenvisit1(visit, n, tok(n.Return, token.RETURN), list(n.Results, token.COMMA))
 	case *ast.SelectStmt:
-		ok = tokenvisit1(visit, n, tok(n.Select), nod(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Select, token.SELECT), nod(n.Body))
 	case *ast.SelectorExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(token.PERIOD), nod(n.Sel))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(UnknownPos, token.PERIOD), nod(n.Sel))
 	case *ast.SendStmt:
-		ok = tokenvisit1(visit, n, nod(n.Chan), tok(n.Arrow), nod(n.Value))
+		panic("sendstmt")
+		//ok = tokenvisit1(visit, n, nod(n.Chan), tok(n.Arrow), nod(n.Value))
 	case *ast.SliceExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack), nod(n.Low), tok(token.COLON), nod(n.High))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack, token.LBRACK), nod(n.Low), tok(UnknownPos, token.COLON), nod(n.High))
 		if n.Slice3 {
-			ok = ok && tokenvisit1(visit, n, tok(token.SEMICOLON), nod(n.High))
+			ok = ok && tokenvisit1(visit, n, tok(UnknownPos, token.COLON), nod(n.High))
 		}
-		ok = ok && tokenvisit1(visit, n, tok(n.Rbrack))
+		ok = ok && tokenvisit1(visit, n, tok(n.Rbrack, token.RBRACK))
 	case *ast.StarExpr:
-		ok = tokenvisit1(visit, n, tok(n.Star), nod(n.X))
+		ok = tokenvisit1(visit, n, tok(n.Star, token.MUL), nod(n.X))
 	case *ast.StructType:
-		ok = tokenvisit1(visit, n, tok(n.Struct), fieldlist(n.Fields, false))
+		ok = tokenvisit1(visit, n, tok(n.Struct, token.STRUCT), fieldlist(n.Fields, token.LBRACE, token.ILLEGAL, token.RBRACE))
 	case *ast.SwitchStmt:
-		ok = tokenvisit1(visit, n, tok(n.Switch), opt(n.Init, tok(token.SEMICOLON)), nod(n.Tag), nod(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Switch, token.SWITCH), opt(n.Init, tok(UnknownPos, token.SEMICOLON)), nod(n.Tag), nod(n.Body))
 	case *ast.TypeAssertExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(token.PERIOD), tok(n.Lparen), nod(n.Type), tok(n.Rparen))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(UnknownPos, token.PERIOD), tok(n.Lparen, token.LPAREN), nod(n.Type), tok(n.Rparen, token.RPAREN))
 	case *ast.TypeSpec:
-		ok = tokenvisit1(visit, n, nod(n.Name), fieldlist(n.TypeParams, true), tok(n.Assign), nod(n.Type))
+		ok = tokenvisit1(visit, n, nod(n.Name), fieldlist(n.TypeParams, token.LBRACE, token.COMMA, token.RBRACE), tok(n.Assign, token.ASSIGN), nod(n.Type))
 	case *ast.TypeSwitchStmt:
-		ok = tokenvisit1(visit, n, tok(n.Switch), opt(n.Init, tok(token.SEMICOLON)), nod(n.Assign), nod(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Switch, token.SWITCH), opt(n.Init, tok(UnknownPos, token.SEMICOLON)), nod(n.Assign), nod(n.Body))
 	case *ast.ValueSpec:
-		ok = tokenvisit1(visit, n, delimList(n.Names), nod(n.Type), delimList(n.Values))
+		ok = tokenvisit1(visit, n, list(n.Names, token.COMMA), nod(n.Type), list(n.Values, token.COMMA))
 	default:
 		panic("unhandled node")
 	}
 	return ok
 }
 
-func tokenvisit1(visit func(ast.Node) bool, parent ast.Node, components ...[]ast.Node) bool {
+func tokenvisit1(visit func(Token) bool, parent ast.Node, components ...[]ast.Node) bool {
 	var r []ast.Node
 	for _, c := range components {
 		r = append(r, c...)
 	}
 	for _, n := range r {
-		switch n.(type) {
+		switch nn := n.(type) {
 		case nodeToken:
-			if !visit(parent) {
+			pos := token.NoPos
+			if nn.TokPos != UnknownPos {
+				pos = nn.TokPos
+			}
+			tok := Token{
+				Tok:  nn.Tok,
+				Pos:  pos,
+				Node: parent,
+			}
+			if !visit(tok) {
 				return false
 			}
 		case ast.Node:
@@ -317,25 +339,24 @@ func tokenvisit1(visit func(ast.Node) bool, parent ast.Node, components ...[]ast
 	return true
 }
 
-func fieldlist(f *ast.FieldList, tokenbetween bool) []ast.Node {
+func fieldlist(f *ast.FieldList, ltok token.Token, between token.Token, rtok token.Token) []ast.Node {
 	if f == nil {
 		return nil
 	}
-	listFunc := list[[]*ast.Field]
-	if tokenbetween {
-		listFunc = delimList[[]*ast.Field]
-	}
-	r := make([]ast.Node, 0, len(f.List)+2)
-	r = append(r, tok(f.Opening)...)
-	r = append(r, listFunc(f.List)...)
-	r = append(r, tok(f.Closing)...)
+	var r []ast.Node
+	r = append(r, tok(f.Opening, ltok)...)
+	r = append(r, list(f.List, between)...)
+	r = append(r, tok(f.Closing, rtok)...)
 	return r
 }
 
-type nodeToken struct{}
+type nodeToken struct {
+	TokPos token.Pos
+	Tok    token.Token
+}
 
-func (n nodeToken) Pos() token.Pos { panic("call to position") }
-func (n nodeToken) End() token.Pos { panic("call to end position") }
+func (n nodeToken) Pos() token.Pos { return n.TokPos }
+func (n nodeToken) End() token.Pos { panic("TODO nodeToken.End") }
 
 func nod(n ast.Node) []ast.Node {
 	if isZero(n) {
@@ -344,20 +365,11 @@ func nod(n ast.Node) []ast.Node {
 	return []ast.Node{n}
 }
 
-func tok(t any) []ast.Node {
-	switch n := t.(type) {
-	case token.Pos:
-		if !n.IsValid() {
-			return nil
-		}
-	case token.Token:
-		if n == token.ILLEGAL {
-			return nil
-		}
-	default:
-		panic("bad tok")
+func tok(pos token.Pos, tok token.Token) []ast.Node {
+	if !pos.IsValid() || tok == token.ILLEGAL {
+		return nil
 	}
-	return []ast.Node{nodeToken{}}
+	return []ast.Node{nodeToken{TokPos: pos, Tok: tok}}
 }
 
 func opt(n ast.Node, delim []ast.Node) []ast.Node {
@@ -369,24 +381,20 @@ func opt(n ast.Node, delim []ast.Node) []ast.Node {
 	return append(ret, delim...)
 }
 
-func delimList[S ~[]E, E ast.Node](l S) []ast.Node {
+func list[S ~[]E, E ast.Node](l S, tok token.Token) []ast.Node {
 	if len(l) == 0 {
 		return nil
 	}
-	r := make([]ast.Node, 0, 2*len(l)-1)
+	listlen := len(l)
+	if tok != token.ILLEGAL {
+		listlen += len(l) - 1
+	}
+	r := make([]ast.Node, 0, listlen)
 	for i, n := range l {
 		r = append(r, n)
-		if i != len(l)-1 {
-			r = append(r, nodeToken{})
+		if i != len(l)-1 && tok != token.ILLEGAL {
+			r = append(r, nodeToken{TokPos: UnknownPos, Tok: tok})
 		}
-	}
-	return r
-}
-
-func list[S ~[]E, E ast.Node](l S) []ast.Node {
-	var r []ast.Node
-	for _, n := range l {
-		r = append(r, n)
 	}
 	return r
 }
