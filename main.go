@@ -187,7 +187,7 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 	case *ast.AssignStmt:
 		ok = tokenvisit1(visit, n, list(n.Lhs, token.COMMA), tok(n.TokPos, n.Tok), list(n.Rhs, token.COMMA), eor)
 	case *ast.BasicLit:
-		ok = tokenvisit1(visit, n, tok(n.ValuePos, n.Kind), eor)
+		ok = tokenvisit1(visit, n, tok(n.ValuePos, n.Kind))
 	case *ast.BinaryExpr:
 		ok = tokenvisit1(visit, n, nod(n.X), tok(n.OpPos, n.Op), nod(n.Y), eor)
 	case *ast.BlockStmt:
@@ -269,7 +269,7 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 	case *ast.GoStmt:
 		ok = tokenvisit1(visit, n, tok(n.Go, token.GO), nod(n.Call), eor)
 	case *ast.Ident:
-		ok = tokenvisit1(visit, n, tok(n.NamePos, token.IDENT), eor)
+		ok = tokenvisit1(visit, n, tok(n.NamePos, token.IDENT))
 	case *ast.IfStmt:
 		ok = tokenvisit1(visit, n, tok(n.If, token.IF), opt(n.Init, tok(UnknownPos, token.SEMICOLON)), nod(n.Cond), nod(n.Body))
 		if n.Else != nil {
