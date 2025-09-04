@@ -183,21 +183,21 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 	switch n := n.(type) {
 	case *ast.ArrayType:
 		// Don't have a token position for
-		ok = tokenvisit1(visit, n, tok(n.Lbrack, token.LBRACK), tok(UnknownPos, token.RBRACK), nod(n.Len), nod(n.Elt))
+		ok = tokenvisit1(visit, n, tok(n.Lbrack, token.LBRACK), tok(UnknownPos, token.RBRACK), nod(n.Len), nod(n.Elt), eor)
 	case *ast.AssignStmt:
-		ok = tokenvisit1(visit, n, list(n.Lhs, token.COMMA), tok(n.TokPos, n.Tok), list(n.Rhs, token.COMMA))
+		ok = tokenvisit1(visit, n, list(n.Lhs, token.COMMA), tok(n.TokPos, n.Tok), list(n.Rhs, token.COMMA), eor)
 	case *ast.BasicLit:
-		ok = tokenvisit1(visit, n, tok(n.ValuePos, n.Kind))
+		ok = tokenvisit1(visit, n, tok(n.ValuePos, n.Kind), eor)
 	case *ast.BinaryExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(n.OpPos, n.Op), nod(n.Y))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.OpPos, n.Op), nod(n.Y), eor)
 	case *ast.BlockStmt:
-		ok = tokenvisit1(visit, n, tok(n.Lbrace, token.LBRACE), list(n.List, token.ILLEGAL), tok(n.Rbrace, token.RBRACE))
+		ok = tokenvisit1(visit, n, tok(n.Lbrace, token.LBRACE), list(n.List, token.ILLEGAL), tok(n.Rbrace, token.RBRACE), eor)
 	case *ast.BranchStmt:
-		ok = tokenvisit1(visit, n, tok(n.TokPos, n.Tok), nod(n.Label))
+		ok = tokenvisit1(visit, n, tok(n.TokPos, n.Tok), nod(n.Label), eor)
 	case *ast.CallExpr:
-		ok = tokenvisit1(visit, n, nod(n.Fun), tok(n.Lparen, token.LPAREN), list(n.Args, token.COMMA), tok(n.Ellipsis, token.ELLIPSIS), tok(n.Rparen, token.RPAREN))
+		ok = tokenvisit1(visit, n, nod(n.Fun), tok(n.Lparen, token.LPAREN), list(n.Args, token.COMMA), tok(n.Ellipsis, token.ELLIPSIS), tok(n.Rparen, token.RPAREN), eor)
 	case *ast.CaseClause:
-		ok = tokenvisit1(visit, n, tok(n.Case, token.CASE), list(n.List, token.COMMA), tok(n.Colon, token.COLON), list(n.Body, token.ILLEGAL))
+		ok = tokenvisit1(visit, n, tok(n.Case, token.CASE), list(n.List, token.COMMA), tok(n.Colon, token.COLON), list(n.Body, token.ILLEGAL), eor)
 	case *ast.ChanType:
 		switch n.Dir {
 		case ast.RECV | ast.SEND:
@@ -207,42 +207,43 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 		case ast.SEND:
 			ok = tokenvisit1(visit, n, tok(UnknownPos, token.CHAN), tok(n.Arrow, token.ARROW))
 		}
-		ok = ok && tokenvisit1(visit, n, nod(n.Value))
+		ok = ok && tokenvisit1(visit, n, nod(n.Value), eor)
 	case *ast.CommClause:
 		t := token.CASE
 		if n.Comm == nil {
 			t = token.DEFAULT
 		}
-		ok = tokenvisit1(visit, n, tok(n.Case, t), nod(n.Comm), tok(n.Colon, token.COLON), list(n.Body, token.ILLEGAL))
+		ok = tokenvisit1(visit, n, tok(n.Case, t), nod(n.Comm), tok(n.Colon, token.COLON), list(n.Body, token.ILLEGAL), eor)
 	case *ast.CompositeLit:
-		ok = tokenvisit1(visit, n, nod(n.Type), tok(n.Lbrace, token.LBRACE), list(n.Elts, token.COMMA), tok(n.Rbrace, token.RBRACE))
+		ok = tokenvisit1(visit, n, nod(n.Type), tok(n.Lbrace, token.LBRACE), list(n.Elts, token.COMMA), tok(n.Rbrace, token.RBRACE), eor)
 	case *ast.DeclStmt:
-		ok = tokenvisit1(visit, n, nod(n.Decl))
+		ok = tokenvisit1(visit, n, nod(n.Decl), eor)
 	case *ast.DeferStmt:
-		ok = tokenvisit1(visit, n, tok(n.Defer, token.DEFER), nod(n.Call))
+		ok = tokenvisit1(visit, n, tok(n.Defer, token.DEFER), nod(n.Call), eor)
 	case *ast.Ellipsis:
-		ok = tokenvisit1(visit, n, tok(n.Ellipsis, token.ELLIPSIS), nod(n.Elt))
+		ok = tokenvisit1(visit, n, tok(n.Ellipsis, token.ELLIPSIS), nod(n.Elt), eor)
 	case *ast.EmptyStmt:
-		if n.Implicit {
-			ok = true
-		} else {
-			ok = tokenvisit1(visit, n, tok(n.Semicolon, token.SEMICOLON))
+		semi := []ast.Node(nil)
+		if !n.Implicit {
+			semi = tok(n.Semicolon, token.SEMICOLON)
 		}
+		ok = tokenvisit1(visit, n, semi, eor)
+
 	case *ast.ExprStmt:
-		ok = tokenvisit1(visit, n, nod(n.X))
+		ok = tokenvisit1(visit, n, nod(n.X), eor)
 	case *ast.Field:
-		ok = tokenvisit1(visit, n, list(n.Names, token.COMMA), nod(n.Type), nod(n.Tag))
+		ok = tokenvisit1(visit, n, list(n.Names, token.COMMA), nod(n.Type), nod(n.Tag), eor)
 	case *ast.FieldList:
 		panic("missed fieldlist")
 	case *ast.File:
-		ok = tokenvisit1(visit, n, tok(n.Package, token.PACKAGE), nod(n.Name), list(n.Decls, token.ILLEGAL))
+		ok = tokenvisit1(visit, n, tok(n.Package, token.PACKAGE), nod(n.Name), list(n.Decls, token.ILLEGAL), eor)
 	case *ast.ForStmt:
 		ok = tokenvisit1(visit, n,
 			tok(n.For, token.FOR),
 			opt(n.Init, tok(UnknownPos, token.SEMICOLON)),
 			nod(n.Cond),
 			opt(n.Post, tok(UnknownPos, token.SEMICOLON)),
-			nod(n.Body))
+			nod(n.Body), eor)
 
 	case *ast.FuncDecl:
 		// TODO(dmo): explain what's up with the strange ranges of
@@ -251,84 +252,86 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 			tok(n.Type.Func, token.FUNC),
 			fieldlist(n.Recv, token.LPAREN, token.COMMA, token.RPAREN),
 			nod(n.Name))
-		ok = ok && tokenvisit1(visit, n.Type.TypeParams, fieldlist(n.Type.TypeParams, token.LBRACK, token.COMMA, token.RBRACK))
-		ok = ok && tokenvisit1(visit, n.Type.Params, fieldlist(n.Type.Params, token.LPAREN, token.COMMA, token.RPAREN))
-		ok = ok && tokenvisit1(visit, n.Type.Results, fieldlist(n.Type.Results, token.LPAREN, token.COMMA, token.RPAREN))
-		ok = ok && tokenvisit1(visit, n, nod(n.Body))
+		ok = ok && tokenvisit1(visit, n.Type.TypeParams, fieldlist(n.Type.TypeParams, token.LBRACK, token.COMMA, token.RBRACK), eor)
+		ok = ok && tokenvisit1(visit, n.Type.Params, fieldlist(n.Type.Params, token.LPAREN, token.COMMA, token.RPAREN), eor)
+		ok = ok && tokenvisit1(visit, n.Type.Results, fieldlist(n.Type.Results, token.LPAREN, token.COMMA, token.RPAREN), eor)
+		ok = ok && tokenvisit1(visit, n, nod(n.Body), eor)
 	case *ast.FuncType:
 		ok = tokenvisit1(visit, n, tok(n.Func, token.FUNC))
-		ok = ok && tokenvisit1(visit, n.TypeParams, fieldlist(n.TypeParams, token.LBRACK, token.COMMA, token.RBRACK))
-		ok = ok && tokenvisit1(visit, n.Params, fieldlist(n.Params, token.LPAREN, token.COMMA, token.RPAREN))
-		ok = ok && tokenvisit1(visit, n.Results, fieldlist(n.Results, token.LPAREN, token.COMMA, token.RPAREN))
+		ok = ok && tokenvisit1(visit, n.TypeParams, fieldlist(n.TypeParams, token.LBRACK, token.COMMA, token.RBRACK), eor)
+		ok = ok && tokenvisit1(visit, n.Params, fieldlist(n.Params, token.LPAREN, token.COMMA, token.RPAREN), eor)
+		ok = ok && tokenvisit1(visit, n.Results, fieldlist(n.Results, token.LPAREN, token.COMMA, token.RPAREN), eor)
+		ok = ok && tokenvisit1(visit, n, eor)
 	case *ast.FuncLit:
-		ok = tokenvisit1(visit, n, nod(n.Type), nod(n.Body))
+		ok = tokenvisit1(visit, n, nod(n.Type), nod(n.Body), eor)
 	case *ast.GenDecl:
-		ok = tokenvisit1(visit, n, tok(n.TokPos, n.Tok), tok(n.Lparen, token.LPAREN), list(n.Specs, token.ILLEGAL), tok(n.Rparen, token.RPAREN))
+		ok = tokenvisit1(visit, n, tok(n.TokPos, n.Tok), tok(n.Lparen, token.LPAREN), list(n.Specs, token.ILLEGAL), tok(n.Rparen, token.RPAREN), eor)
 	case *ast.GoStmt:
-		ok = tokenvisit1(visit, n, tok(n.Go, token.GO), nod(n.Call))
+		ok = tokenvisit1(visit, n, tok(n.Go, token.GO), nod(n.Call), eor)
 	case *ast.Ident:
-		ok = tokenvisit1(visit, n, tok(n.NamePos, token.IDENT))
+		ok = tokenvisit1(visit, n, tok(n.NamePos, token.IDENT), eor)
 	case *ast.IfStmt:
 		ok = tokenvisit1(visit, n, tok(n.If, token.IF), opt(n.Init, tok(UnknownPos, token.SEMICOLON)), nod(n.Cond), nod(n.Body))
 		if n.Else != nil {
 			ok = ok && tokenvisit1(visit, n, tok(UnknownPos, token.ELSE), nod(n.Else))
 		}
+		ok = ok && tokenvisit1(visit, n, eor)
 	case *ast.ImportSpec:
 		// TODO(dmo): how does n.EndPos, work here?
-		ok = tokenvisit1(visit, n, nod(n.Name), nod(n.Path))
+		ok = tokenvisit1(visit, n, nod(n.Name), nod(n.Path), eor)
 	case *ast.IncDecStmt:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(n.TokPos, n.Tok))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.TokPos, n.Tok), eor)
 	case *ast.IndexExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack, token.LBRACK), nod(n.Index), tok(n.Rbrack, token.RBRACK))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack, token.LBRACK), nod(n.Index), tok(n.Rbrack, token.RBRACK), eor)
 	case *ast.IndexListExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack, token.LBRACK), list(n.Indices, token.COMMA), tok(n.Rbrack, token.RBRACK))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack, token.LBRACK), list(n.Indices, token.COMMA), tok(n.Rbrack, token.RBRACK), eor)
 	case *ast.InterfaceType:
-		ok = tokenvisit1(visit, n, tok(n.Interface, token.INTERFACE), fieldlist(n.Methods, token.LBRACE, token.ILLEGAL, token.RBRACE))
+		ok = tokenvisit1(visit, n, tok(n.Interface, token.INTERFACE), fieldlist(n.Methods, token.LBRACE, token.ILLEGAL, token.RBRACE), eor)
 	case *ast.KeyValueExpr:
-		ok = tokenvisit1(visit, n, nod(n.Key), tok(n.Colon, token.COLON), nod(n.Value))
+		ok = tokenvisit1(visit, n, nod(n.Key), tok(n.Colon, token.COLON), nod(n.Value), eor)
 	case *ast.LabeledStmt:
-		ok = tokenvisit1(visit, n, nod(n.Label), tok(n.Colon, token.COLON), nod(n.Stmt))
+		ok = tokenvisit1(visit, n, nod(n.Label), tok(n.Colon, token.COLON), nod(n.Stmt), eor)
 	case *ast.MapType:
-		ok = tokenvisit1(visit, n, tok(n.Map, token.MAP), tok(UnknownPos, token.LBRACK), nod(n.Key), tok(UnknownPos, token.RBRACK), nod(n.Value))
+		ok = tokenvisit1(visit, n, tok(n.Map, token.MAP), tok(UnknownPos, token.LBRACK), nod(n.Key), tok(UnknownPos, token.RBRACK), nod(n.Value), eor)
 	case *ast.ParenExpr:
-		ok = tokenvisit1(visit, n, tok(n.Lparen, token.LPAREN), nod(n.X), tok(n.Rparen, token.RPAREN))
+		ok = tokenvisit1(visit, n, tok(n.Lparen, token.LPAREN), nod(n.X), tok(n.Rparen, token.RPAREN), eor)
 	case *ast.RangeStmt:
 		if n.Value != nil {
 			ok = tokenvisit1(visit, n, tok(n.For, token.FOR), nod(n.Key), tok(UnknownPos, token.COMMA), nod(n.Value), tok(n.TokPos, n.Tok))
 		} else {
 			ok = tokenvisit1(visit, n, tok(n.For, token.FOR), nod(n.Key), tok(n.TokPos, n.Tok))
 		}
-		ok = ok && tokenvisit1(visit, n, tok(n.Range, token.RANGE), nod(n.X), nod(n.Body))
+		ok = ok && tokenvisit1(visit, n, tok(n.Range, token.RANGE), nod(n.X), nod(n.Body), eor)
 	case *ast.ReturnStmt:
-		ok = tokenvisit1(visit, n, tok(n.Return, token.RETURN), list(n.Results, token.COMMA))
+		ok = tokenvisit1(visit, n, tok(n.Return, token.RETURN), list(n.Results, token.COMMA), eor)
 	case *ast.SelectStmt:
-		ok = tokenvisit1(visit, n, tok(n.Select, token.SELECT), nod(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Select, token.SELECT), nod(n.Body), eor)
 	case *ast.SelectorExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(UnknownPos, token.PERIOD), nod(n.Sel))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(UnknownPos, token.PERIOD), nod(n.Sel), eor)
 	case *ast.SendStmt:
-		ok = tokenvisit1(visit, n, nod(n.Chan), tok(n.Arrow, token.ARROW), nod(n.Value))
+		ok = tokenvisit1(visit, n, nod(n.Chan), tok(n.Arrow, token.ARROW), nod(n.Value), eor)
 	case *ast.SliceExpr:
 		ok = tokenvisit1(visit, n, nod(n.X), tok(n.Lbrack, token.LBRACK), nod(n.Low), tok(UnknownPos, token.COLON), nod(n.High))
 		if n.Slice3 {
 			ok = ok && tokenvisit1(visit, n, tok(UnknownPos, token.COLON), nod(n.High))
 		}
-		ok = ok && tokenvisit1(visit, n, tok(n.Rbrack, token.RBRACK))
+		ok = ok && tokenvisit1(visit, n, tok(n.Rbrack, token.RBRACK), eor)
 	case *ast.StarExpr:
-		ok = tokenvisit1(visit, n, tok(n.Star, token.MUL), nod(n.X))
+		ok = tokenvisit1(visit, n, tok(n.Star, token.MUL), nod(n.X), eor)
 	case *ast.StructType:
-		ok = tokenvisit1(visit, n, tok(n.Struct, token.STRUCT), fieldlist(n.Fields, token.LBRACE, token.ILLEGAL, token.RBRACE))
+		ok = tokenvisit1(visit, n, tok(n.Struct, token.STRUCT), fieldlist(n.Fields, token.LBRACE, token.ILLEGAL, token.RBRACE), eor)
 	case *ast.SwitchStmt:
-		ok = tokenvisit1(visit, n, tok(n.Switch, token.SWITCH), opt(n.Init, tok(UnknownPos, token.SEMICOLON)), nod(n.Tag), nod(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Switch, token.SWITCH), opt(n.Init, tok(UnknownPos, token.SEMICOLON)), nod(n.Tag), nod(n.Body), eor)
 	case *ast.TypeAssertExpr:
-		ok = tokenvisit1(visit, n, nod(n.X), tok(UnknownPos, token.PERIOD), tok(n.Lparen, token.LPAREN), nod(n.Type), tok(n.Rparen, token.RPAREN))
+		ok = tokenvisit1(visit, n, nod(n.X), tok(UnknownPos, token.PERIOD), tok(n.Lparen, token.LPAREN), nod(n.Type), tok(n.Rparen, token.RPAREN), eor)
 	case *ast.TypeSpec:
-		ok = tokenvisit1(visit, n, nod(n.Name), fieldlist(n.TypeParams, token.LBRACE, token.COMMA, token.RBRACE), tok(n.Assign, token.ASSIGN), nod(n.Type))
+		ok = tokenvisit1(visit, n, nod(n.Name), fieldlist(n.TypeParams, token.LBRACE, token.COMMA, token.RBRACE), tok(n.Assign, token.ASSIGN), nod(n.Type), eor)
 	case *ast.TypeSwitchStmt:
-		ok = tokenvisit1(visit, n, tok(n.Switch, token.SWITCH), opt(n.Init, tok(UnknownPos, token.SEMICOLON)), nod(n.Assign), nod(n.Body))
+		ok = tokenvisit1(visit, n, tok(n.Switch, token.SWITCH), opt(n.Init, tok(UnknownPos, token.SEMICOLON)), nod(n.Assign), nod(n.Body), eor)
 	case *ast.UnaryExpr:
-		ok = tokenvisit1(visit, n, tok(n.OpPos, n.Op), nod(n.X))
+		ok = tokenvisit1(visit, n, tok(n.OpPos, n.Op), nod(n.X), eor)
 	case *ast.ValueSpec:
-		ok = tokenvisit1(visit, n, list(n.Names, token.COMMA), nod(n.Type), list(n.Values, token.COMMA))
+		ok = tokenvisit1(visit, n, list(n.Names, token.COMMA), nod(n.Type), list(n.Values, token.COMMA), eor)
 	default:
 		panic("unhandled node")
 	}
@@ -423,6 +426,11 @@ func list[S ~[]E, E ast.Node](l S, tok token.Token) []ast.Node {
 	}
 	return r
 }
+
+var eor = []ast.Node{nodeToken{
+	TokPos: UnknownPos,
+	Tok:    token.EOF,
+}}
 
 func isZero(n ast.Node) bool {
 	return n == nil || reflect.ValueOf(n).IsZero()
