@@ -2010,12 +2010,22 @@ func (p *printer) declList(list []ast.Decl) {
 	}
 }
 
-func (p *printer) step(n ast.Node) {
+func (p *printer) step(n ast.Node, t any) {
 	if p.Config.Transitions == nil {
 		return
 	}
-	cmts := p.Config.Transitions.Step(p.lastNode, n)
-	p.lastNode = n
+	tok := token.ILLEGAL
+	switch t := t.(type) {
+	case token.Token:
+		tok = t
+	case *ast.Ident:
+		tok = token.IDENT
+	case *ast.BasicLit:
+		tok = t.Kind
+	default:
+		panic("bad call to print")
+	}
+	cmts := p.Config.Transitions.Step(n, tok)
 	for _, c := range cmts {
 		p.setComment(c)
 	}

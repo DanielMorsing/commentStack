@@ -94,8 +94,6 @@ type printer struct {
 	// Cache of most recently computed line position.
 	cachedPos  token.Pos
 	cachedLine int // line corresponding to cachedPos
-
-	lastNode ast.Node
 }
 
 func (p *printer) internalError(msg ...any) {
@@ -912,7 +910,7 @@ func (p *printer) print(n ast.Node, args ...any) {
 		panic("no token for print")
 	}
 	if n != nil {
-		p.step(n)
+		p.step(n, args[0])
 	}
 	for _, arg := range args {
 		// information about the current arg
@@ -1348,7 +1346,7 @@ type Config struct {
 // be in lockstep so we don't have to recalculate them from scratch, but the inspector
 // is fast, so leave it as ast.Nodes for now.
 type Transitions interface {
-	Step(before ast.Node, after ast.Node) []*ast.CommentGroup
+	Step(node ast.Node, tok token.Token) []*ast.CommentGroup
 }
 
 var printerPool = sync.Pool{

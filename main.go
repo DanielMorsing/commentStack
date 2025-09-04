@@ -478,6 +478,7 @@ func (r *commentRange) findCursors(cur inspector.Cursor) {
 type passthrough struct {
 	begin map[ast.Node][]*commentRange
 	end   map[ast.Node][]*commentRange
+	prev  ast.Node
 }
 
 func newPassthrough(rngs []*commentRange) *passthrough {
@@ -493,14 +494,15 @@ func newPassthrough(rngs []*commentRange) *passthrough {
 	}
 }
 
-func (p *passthrough) Step(before ast.Node, after ast.Node) []*ast.CommentGroup {
-	beginlist := p.begin[before]
+func (p *passthrough) Step(node ast.Node, t token.Token) []*ast.CommentGroup {
+	beginlist := p.begin[p.prev]
 	var cmtlist []*ast.CommentGroup
 	for _, r := range beginlist {
-		if r.nextCursor.Node() == after {
+		if r.nextCursor.Node() == node {
 			cmtlist = append(cmtlist, r.comment)
 		}
 	}
+	p.prev = node
 	return cmtlist
 }
 
