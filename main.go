@@ -32,6 +32,7 @@ import (
 
 	"github.com/DanielMorsing/commentStack/go/printer"
 
+	"golang.org/x/tools/go/ast/edge"
 	"golang.org/x/tools/go/ast/inspector"
 )
 
@@ -127,25 +128,39 @@ func main() {
 		}
 	case "shuffle":
 		clearComments(root)
-		for _, f := range files {
-			//fileCur, _ := root.FindNode(f)
-			//shuffleFunc(fileCur)
+		for i, f := range files {
+			fileCur, _ := root.FindNode(f)
+			shuffleFunc(fileCur, fileRanges[i])
 			for t := range tokenOrder(f) {
 				fmt.Printf("%T %s %s\n", t.Node, line(t.Pos), t.Tok)
 			}
 			cfg := printer.Config{
-				Mode:     0,
-				Tabwidth: 8,
-				Indent:   0,
+				Mode:        0,
+				Tabwidth:    8,
+				Indent:      0,
+				Transitions: newPassthrough(fileRanges[i]),
 			}
 			cfg.Fprint(os.Stdout, fset, f)
 		}
 	}
 }
 
-func shuffleFunc(fileCur inspector.Cursor) {
+func shuffleFunc(fileCur inspector.Cursor, rngs []*commentRange) {
 	types := []ast.Node{
 		(*ast.FuncDecl)(nil),
+	}
+	anchorPrev := make(map[ast.Node]*commentRange)
+	anchorNext := make(map[ast.Node]*commentRange)
+	for _, r := range rngs {
+		ek, _ := r.parent.ParentEdge()
+		if ek != edge.FuncDecl_Body {
+			continue
+		}
+		if fset.Position(r.prevPos).Line == fset.Position(r.comment.Pos()).Line {
+			anchorPrev[r.prevCursor.Node()] = r
+		} else {
+			anchorNext[r.nextCursor.Node()] = r
+		}
 	}
 	for fns := range fileCur.Preorder(types...) {
 		fnsn := fns.Node().(*ast.FuncDecl)
@@ -158,6 +173,31 @@ func shuffleFunc(fileCur inspector.Cursor) {
 			newBody[i] = fnsn.Body.List[n]
 		}
 		fnsn.Body.List = newBody
+		var prev Token
+		var anchor *commentRange
+		for tok := range tokenOrder(fnsn) {
+			if tok.isLast() {
+				continue
+			}
+			if anchor != nil {
+				var ok bool
+				anchor.nextCursor, ok = fileCur.FindNode(tok.Node)
+				if !ok {
+					panic(fmt.Sprintf("bad findnode %T %s", tok.Node, line(tok.Node)))
+				}
+				anchor = nil
+			}
+			if c := anchorNext[tok.Node]; c != nil {
+				var ok bool
+				c.prevCursor, ok = fileCur.FindNode(prev.Node)
+				if !ok {
+					panic(fmt.Sprintf("bad findnode %T %s", prev.Node, line(prev.Node)))
+				}
+			} else if c := anchorPrev[tok.Node]; c != nil {
+				anchor = c
+			}
+			prev = tok
+		}
 	}
 }
 
@@ -166,6 +206,10 @@ type Token struct {
 	Node ast.Node
 	Pos  token.Pos
 	Tok  token.Token
+}
+
+func (t *Token) isLast() bool {
+	return t.Tok == token.EOF
 }
 
 func tokenOrder(root ast.Node) iter.Seq[Token] {
@@ -467,6 +511,7 @@ func clearComments(root inspector.Cursor) {
 }
 
 func (r *commentRange) findCursors(cur inspector.Cursor) {
+	r.parent, _ = cur.FindByPos(r.prevPos, r.nextPos)
 	r.prevCursor, _ = cur.FindByPos(r.prevPos, r.prevPos)
 	r.nextCursor, _ = cur.FindByPos(r.nextPos, r.nextPos)
 
@@ -508,6 +553,7 @@ func (p *passthrough) Step(node ast.Node, t token.Token) []*ast.CommentGroup {
 
 type commentRange struct {
 	comment    *ast.CommentGroup
+	parent     inspector.Cursor
 	prevCursor inspector.Cursor
 	nextCursor inspector.Cursor
 	prevPos    token.Pos
