@@ -38,7 +38,7 @@ import (
 
 var (
 	fset = token.NewFileSet()
-	demo = flag.String("demo", "parse", "which demo to run, one of [parse]")
+	demo = flag.String("demo", "parse", "which demo to run, one of [parse, passthrough, shuffle]")
 )
 
 func main() {
