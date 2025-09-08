@@ -37,8 +37,9 @@ import (
 )
 
 var (
-	fset = token.NewFileSet()
-	demo = flag.String("demo", "parse", "which demo to run, one of [parse, passthrough, shuffle]")
+	fset  = token.NewFileSet()
+	demo  = flag.String("demo", "parse", "which demo to run, one of [parse, passthrough, shuffle]")
+	debug = flag.Bool("debug", false, "print debug info")
 )
 
 func main() {
@@ -122,7 +123,7 @@ func main() {
 				Mode:        printer.UseSpaces | printer.TabIndent,
 				Tabwidth:    8,
 				Indent:      0,
-				Transitions: newPassthrough(fileRanges[fidx]),
+				Transitions: newPassthrough(fileRanges[fidx], *debug),
 			}
 			cfg.Fprint(os.Stdout, fset, f)
 		}
@@ -138,7 +139,7 @@ func main() {
 				Mode:        printer.UseSpaces | printer.TabIndent,
 				Tabwidth:    8,
 				Indent:      0,
-				Transitions: newPassthrough(fileRanges[i]),
+				Transitions: newPassthrough(fileRanges[i], *debug),
 			}
 			cfg.Fprint(os.Stdout, fset, f)
 		}
@@ -146,9 +147,6 @@ func main() {
 }
 
 func shuffleFunc(fileCur inspector.Cursor, rngs []*commentRange) {
-	types := []ast.Node{
-		(*ast.FuncDecl)(nil),
-	}
 	anchorPrev := make(map[ast.Node]*commentRange)
 	anchorNext := make(map[ast.Node]*commentRange)
 	for _, r := range rngs {
@@ -161,6 +159,9 @@ func shuffleFunc(fileCur inspector.Cursor, rngs []*commentRange) {
 		} else {
 			anchorNext[r.nextCursor.Node()] = r
 		}
+	}
+	types := []ast.Node{
+		(*ast.FuncDecl)(nil),
 	}
 	for fns := range fileCur.Preorder(types...) {
 		fnsn := fns.Node().(*ast.FuncDecl)
@@ -375,7 +376,13 @@ func tokVisit(n ast.Node, visit func(Token) bool) bool {
 	case *ast.UnaryExpr:
 		ok = tokenvisit1(visit, n, tok(n.OpPos, n.Op), nod(n.X), eor)
 	case *ast.ValueSpec:
-		ok = tokenvisit1(visit, n, list(n.Names, token.COMMA), nod(n.Type), list(n.Values, token.COMMA), eor)
+		var values []ast.Node
+		if n.Values == nil {
+			values = make([]ast.Node, 0, len(n.Values)+1)
+			values = append(values, tok(UnknownPos, token.ASSIGN)...)
+			values = append(values, list(n.Values, token.COMMA)...)
+		}
+		ok = tokenvisit1(visit, n, list(n.Names, token.COMMA), nod(n.Type), values, eor)
 	default:
 		panic("unhandled node")
 	}
@@ -524,9 +531,11 @@ type passthrough struct {
 	begin map[ast.Node][]*commentRange
 	end   map[ast.Node][]*commentRange
 	prev  ast.Node
+
+	debug bool
 }
 
-func newPassthrough(rngs []*commentRange) *passthrough {
+func newPassthrough(rngs []*commentRange, debugPrint bool) *passthrough {
 	begin := make(map[ast.Node][]*commentRange)
 	end := make(map[ast.Node][]*commentRange)
 	for _, r := range rngs {
@@ -536,6 +545,7 @@ func newPassthrough(rngs []*commentRange) *passthrough {
 	return &passthrough{
 		begin: begin,
 		end:   end,
+		debug: debugPrint,
 	}
 }
 
@@ -546,6 +556,9 @@ func (p *passthrough) Step(node ast.Node, t token.Token) []*ast.CommentGroup {
 		if r.nextCursor.Node() == node {
 			cmtlist = append(cmtlist, r.comment)
 		}
+	}
+	if p.debug {
+		fmt.Printf("%s: %T %s\n", line(node), node, t)
 	}
 	p.prev = node
 	return cmtlist
