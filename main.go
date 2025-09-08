@@ -119,7 +119,7 @@ func main() {
 			// remove free floating comments
 			f.Comments = nil
 			cfg := printer.Config{
-				Mode:        0,
+				Mode:        printer.UseSpaces | printer.TabIndent,
 				Tabwidth:    8,
 				Indent:      0,
 				Transitions: newPassthrough(fileRanges[fidx]),
@@ -135,7 +135,7 @@ func main() {
 				fmt.Printf("%T %s %s\n", t.Node, line(t.Pos), t.Tok)
 			}
 			cfg := printer.Config{
-				Mode:        0,
+				Mode:        printer.UseSpaces | printer.TabIndent,
 				Tabwidth:    8,
 				Indent:      0,
 				Transitions: newPassthrough(fileRanges[i]),
