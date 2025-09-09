@@ -1,4 +1,4 @@
-module github.com/DanielMorsing/commentStack
+module github.com/DanielMorsing/tokenorder
 
 go 1.25.0
 

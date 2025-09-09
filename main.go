@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// commentStack is an experiment that tries to represent comments
-// as state transitions in the go parser, via Cursors. It is adapted from gotype
-//
+// tokenorder is an experiment that tries to represent comments
+// as state transitions in the go parser, via pairs of ast.Node.
+// It is adapted from gotype
+
 // Right now, all it does is parse the example files and spit out
-// which pairs of cursors comments lie between and which construction
-// "anchors them"
-//
-// I'm working on an example that shows modification
+// which pairs of ast.Node comments lie between and has some rudimentary
+// logic for manipulating and re-anchoring the ASTs. In its current form, it exists mostly
+// for the purposes of discussion
 package main
 
 import (
@@ -30,7 +30,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/DanielMorsing/commentStack/go/printer"
+	"github.com/DanielMorsing/tokenorder/go/printer"
 
 	"golang.org/x/tools/go/ast/edge"
 	"golang.org/x/tools/go/ast/inspector"

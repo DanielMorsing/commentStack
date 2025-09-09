@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanielMorsing/commentStack/internal/diff"
+	"github.com/DanielMorsing/tokenorder/internal/diff"
 )
 
 const (
